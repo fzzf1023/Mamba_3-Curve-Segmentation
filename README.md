@@ -354,9 +354,9 @@ Auxiliary dense-head diagnostics:
 
 Instance-level metrics for the default `CurveSOTAQueryNet` only:
 
-- `mAP50`, `mAP75`, `mAP50:95`
+- `mAP50`, `mAP75`, and `mAP50:95`
 - `PQ`
-- optional `coco_mAP50`, `coco_mAP75`, `coco_mAP50:95` when `pycocotools` is installed
+- Optional official COCO AP via `pycocotools`: `coco_mAP50`, `coco_mAP75`, and `coco_mAP50:95`
 
 Important detail:
 
