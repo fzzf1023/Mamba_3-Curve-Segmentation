@@ -296,6 +296,13 @@
       display: block;
       border-radius: 6px;
       background: #ffffff;
+      text-rendering: geometricPrecision;
+    }
+    .flow-svg text {
+      fill: #24292f;
+      opacity: 1;
+      visibility: visible;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
     }
     .flow-node text {
       fill: #24292f;
@@ -307,7 +314,10 @@
       font-weight: 500;
       fill: #57606a;
     }
-    .flow-node rect { stroke-width: 1.25; }
+    .flow-node rect {
+      stroke-width: 1.25;
+      filter: url(#nodeShadow);
+    }
     .flow-main rect { fill: #ddf4ff; stroke: #54aeff; }
     .flow-aux rect { fill: #f6f8fa; stroke: #afb8c1; }
     .flow-train rect { fill: #fff8c5; stroke: #d4a72c; }
@@ -459,7 +469,7 @@
               <text class="flow-lane-title" x="1328" y="52">Training / Inference Decision Zone</text>
               <text class="flow-lane-title" x="1328" y="362">Final Output</text>
 
-              <g class="flow-node flow-main" filter="url(#nodeShadow)">
+              <g class="flow-node flow-main">
                 <rect x="52" y="90" width="180" height="82" rx="13"></rect>
                 <text x="142" y="118" text-anchor="middle">
                   <tspan x="142" dy="0">Input Image</tspan>
@@ -468,7 +478,7 @@
               </g>
               <g class="flow-step"><circle cx="66" cy="92" r="12"></circle><text x="66" y="92">1</text></g>
 
-              <g class="flow-node flow-main" filter="url(#nodeShadow)">
+              <g class="flow-node flow-main">
                 <rect x="264" y="90" width="220" height="82" rx="13"></rect>
                 <text x="374" y="118" text-anchor="middle">
                   <tspan x="374" dy="0">Input Enhancement</tspan>
@@ -477,7 +487,7 @@
               </g>
               <g class="flow-step"><circle cx="278" cy="92" r="12"></circle><text x="278" y="92">2</text></g>
 
-              <g class="flow-node flow-main" filter="url(#nodeShadow)">
+              <g class="flow-node flow-main">
                 <rect x="514" y="90" width="252" height="82" rx="13"></rect>
                 <text x="640" y="116" text-anchor="middle">
                   <tspan x="640" dy="0">Progressive Mamba Encoder</tspan>
@@ -486,7 +496,7 @@
               </g>
               <g class="flow-step"><circle cx="528" cy="92" r="12"></circle><text x="528" y="92">3</text></g>
 
-              <g class="flow-node flow-aux" filter="url(#nodeShadow)">
+              <g class="flow-node flow-aux">
                 <rect x="796" y="90" width="252" height="82" rx="13"></rect>
                 <text x="922" y="116" text-anchor="middle">
                   <tspan x="922" dy="0">FPN + Stem Skip + Grid Bias</tspan>
@@ -495,7 +505,7 @@
               </g>
               <g class="flow-step"><circle cx="810" cy="92" r="12"></circle><text x="810" y="92">4</text></g>
 
-              <g class="flow-node flow-aux" filter="url(#nodeShadow)">
+              <g class="flow-node flow-aux">
                 <rect x="1080" y="90" width="220" height="82" rx="13"></rect>
                 <text x="1190" y="116" text-anchor="middle">
                   <tspan x="1190" dy="0">Query Decoder</tspan>
@@ -504,7 +514,7 @@
               </g>
               <g class="flow-step"><circle cx="1094" cy="92" r="12"></circle><text x="1094" y="92">5</text></g>
 
-              <g class="flow-node flow-aux" filter="url(#nodeShadow)">
+              <g class="flow-node flow-aux">
                 <rect x="1080" y="232" width="220" height="100" rx="13"></rect>
                 <text x="1190" y="258" text-anchor="middle">
                   <tspan x="1190" dy="0">Pixel Topology Branch</tspan>
@@ -514,7 +524,7 @@
               </g>
               <g class="flow-step"><circle cx="1094" cy="234" r="12"></circle><text x="1094" y="234">6</text></g>
 
-              <g class="flow-node flow-train" filter="url(#nodeShadow)">
+              <g class="flow-node flow-train">
                 <rect x="1340" y="86" width="360" height="104" rx="13"></rect>
                 <text x="1520" y="112" text-anchor="middle">
                   <tspan x="1520" dy="0">Training Path</tspan>
@@ -524,7 +534,7 @@
               </g>
               <g class="flow-step"><circle cx="1354" cy="88" r="12"></circle><text x="1354" y="88">7</text></g>
 
-              <g class="flow-node flow-infer" filter="url(#nodeShadow)">
+              <g class="flow-node flow-infer">
                 <rect x="1340" y="232" width="360" height="104" rx="13"></rect>
                 <text x="1520" y="258" text-anchor="middle">
                   <tspan x="1520" dy="0">Inference Path</tspan>
@@ -534,7 +544,7 @@
               </g>
               <g class="flow-step"><circle cx="1354" cy="234" r="12"></circle><text x="1354" y="234">8</text></g>
 
-              <g class="flow-node flow-out" filter="url(#nodeShadow)">
+              <g class="flow-node flow-out">
                 <rect x="1340" y="398" width="360" height="88" rx="13"></rect>
                 <text x="1520" y="426" text-anchor="middle">
                   <tspan x="1520" dy="0">Output Instance Set</tspan>
@@ -543,7 +553,7 @@
               </g>
               <g class="flow-step"><circle cx="1354" cy="400" r="12"></circle><text x="1354" y="400">9</text></g>
 
-              <g class="flow-node flow-opt" filter="url(#nodeShadow)">
+              <g class="flow-node flow-opt">
                 <rect x="796" y="372" width="252" height="100" rx="13"></rect>
                 <text x="922" y="398" text-anchor="middle">
                   <tspan x="922" dy="0">Optional Legend-Guided Branch</tspan>
@@ -564,14 +574,20 @@
               <circle cx="1318" cy="206" r="3.8" fill="#2a5ea9" opacity="0.9"></circle>
               <line class="flow-line" x1="1318" y1="147" x2="1340" y2="147"></line>
               <line class="flow-line" x1="1318" y1="266" x2="1340" y2="266"></line>
-              <text class="flow-note" x="1146" y="322">Only crossing directly enters post-processing</text>
+              <text class="flow-note" x="1190" y="348" text-anchor="middle">
+                <tspan x="1190" dy="0">Only crossing directly enters</tspan>
+                <tspan x="1190" dy="15">post-processing</tspan>
+              </text>
               <line class="flow-line" x1="1520" y1="336" x2="1520" y2="398"></line>
 
               <path class="flow-dash" d="M 1340 114 C 1120 18, 892 18, 766 90"></path>
-              <text class="flow-note" x="1020" y="34">Backpropagation during training updates backbone parameters</text>
+              <text class="flow-note" x="840" y="30">Backpropagation during training updates backbone parameters</text>
 
               <path class="flow-dash" d="M 1048 422 L 1064 422 L 1064 172 L 1080 172"></path>
-              <text class="flow-note" x="1048" y="448">Legend priors inject Query semantics when available</text>
+              <text class="flow-note" x="922" y="494" text-anchor="middle">
+                <tspan x="922" dy="0">Legend priors inject</tspan>
+                <tspan x="922" dy="15">Query semantics when available</tspan>
+              </text>
             </svg>
             <div class="flow-legend">
               <span class="flow-chip chip-main">Backbone Feature Flow</span>
@@ -624,16 +640,18 @@
       <section id="p1" class="slide">
         <div class="slide-head">Task Definition, Symbols, and Evaluation Targets</div>
         <div class="slide-body">
-          <p>Input image \(I\in\mathbb{R}^{3\times H\times W}\), output instance set:</p>
+          <p>Input image \(I\in\mathbb{R}^{3\times H\times W}\), output instance set and final extracted curve union:</p>
           <div class="eq">\[
-          \mathcal{Y}=\{(M_k,s_k)\}_{k=1}^{N}.
+          \mathcal{Y}=\{(M_k,s_k)\}_{k=1}^{N},\qquad
+          \widehat{C}=\bigvee_{k=1}^{N} M_k.
           \]
           </div>
           <div class="def">
             <b>Symbol Notes:</b>
             \(M_k\in\{0,1\}^{H\times W}\) is the mask of the \(k\)-th curve instance;
             \(s_k\in[0,1]\) is the confidence score;
-            \(N\) is the number of retained instances in the image.
+            \(N\) is the number of retained instances in the image;
+            \(\widehat{C}\) is the merged final extraction mask used for curve-level evaluation.
           </div>
           <div class="grid-2">
             <div class="card">
@@ -648,10 +666,10 @@
             <div class="card">
               <h4>Metrics</h4>
               <ol>
-                <li>Instance-level: mAP50/75/50:95, PQ.</li>
-                <li>Pixel-level: curve IoU / Dice.</li>
-                <li>Topology-level: skeleton recall.</li>
-                <li>Optional: crossing-subset statistics (false suppression rate).</li>
+                <li>Final extraction: curve IoU / Dice, curve precision / recall, curve clDice.</li>
+                <li>Topology coverage: skeleton recall over the final extracted curve union.</li>
+                <li>Auxiliary dense-head diagnostics: centerline IoU / Dice, centerline precision / recall.</li>
+                <li>SOTA-only instance separation: mAP50/75/50:95, PQ, and optional COCO AP, all computed after post-processing rather than on raw queries.</li>
               </ol>
             </div>
           </div>
@@ -834,7 +852,7 @@
             1) \(B_{grid}\) is a background bias map estimated by the pixel head, mainly capturing periodic background responses such as grid lines and ticks.<br>
             2) \(\lambda_g\) is a learnable scaling factor that controls the injection strength of the background-suppression component.<br>
             3) The additive fusion \(F+\lambda_g B_{grid}\) is used to suppress background while preserving backbone semantic magnitude, avoiding the over-suppression of weak curves that can happen with multiplicative gating.<br>
-            4) The five outputs of the pixel topology head, centerline/crossing/boundary/direction/grid, correspond to connectivity, crossings, instance separation, directional consistency, and background suppression, providing geometric priors for subsequent instance decoding.
+            4) The five outputs of the pixel topology head, centerline/crossing/boundary/direction/grid, correspond to connectivity, crossings, instance separation, directional consistency, and background suppression. In the current code path they mainly provide auxiliary geometric supervision during training, while <code>crossing_logits</code> additionally enter post-processing at inference.
           </div>
           <div class="grid-2">
             <div class="card">
@@ -976,6 +994,17 @@
           +\mathcal{L}_{optional}.
           \]
           </div>
+          <div class="eq">\[
+          \mathcal{L}_{scalar}
+          =\sum_i w_i\left(e^{-s_i}\mathcal{L}_i+\frac{1}{2}s_i\right),
+          \qquad s_i=\log \sigma_i^2.
+          \]
+          </div>
+          <div class="def">
+            <b>Current Default Aggregation Rule:</b>
+            The implementation enables uncertainty weighting by default, so the optimizer minimizes the scalar objective above.
+            If uncertainty weighting is disabled, this reduces to the manually weighted sum \(\sum_i w_i\mathcal{L}_i\).
+          </div>
           <div class="table-wrap">
             <table>
               <thead>
@@ -1001,8 +1030,9 @@
           <div class="def">
             <b>Detailed Explanation:</b><br>
             1) The gap term \(1-\frac{\sum P\odot S_{gt}}{\sum S_{gt}}\) emphasizes skeleton coverage and directly suppresses breakage probability.<br>
-            2) The bridge term \(\frac{\sum P\odot B_{inst}}{\sum B_{inst}}\) constrains activation across instance boundaries, reducing bridge errors where two curves are merged into one.<br>
-            3) CAPE is essentially a joint constraint on connectivity and separability: the former keeps each curve continuous, while the latter prevents different curves from being incorrectly linked.
+            2) In the current SOTA implementation, \(P\) is the predicted centerline probability \(\sigma(\texttt{centerline\_logits})\), not the final query mask union.<br>
+            3) The bridge term \(\frac{\sum P\odot B_{inst}}{\sum B_{inst}}\) constrains activation across instance boundaries, reducing bridge errors where two curves are merged into one.<br>
+            4) CAPE is essentially a joint constraint on connectivity and separability: the former keeps each curve continuous, while the latter prevents different curves from being incorrectly linked.
           </div>
         </div>
       </section>
@@ -1105,14 +1135,15 @@
           <p>crossing-aware rules:</p>
           <div class="eq">\[
           n_{ov}=|\Omega_{ov}(m_i,m_j)|,\qquad
-          \overline{C}_{overlap}=\frac{1}{n_{ov}}\sum_{p\in\Omega_{ov}}C_{cross}(p).
+          \overline{C}_{overlap}=\frac{1}{n_{ov}}\sum_{p\in\Omega_{ov}}C_{cross}(p),
+          \quad \text{evaluated only when } n_{ov}\ge 5.
           \]
           </div>
           <div class="eq">\[
           \mathrm{Decision}(m_i,m_j)=
           \begin{cases}
           \text{keep both}, & \mathrm{IoU}(m_i,m_j)\le t_{nms},\\
-          \text{keep both}, & \mathrm{IoU}(m_i,m_j)\gt t_{nms}\ \land\ n_{ov}\gt 4\ \land\ \overline{C}_{overlap}\gt 0.4\ \land\ \mathrm{IoU}(m_i,m_j)\lt t_{override},\\
+          \text{keep both}, & \mathrm{IoU}(m_i,m_j)\gt t_{nms}\ \land\ n_{ov}\ge 5\ \land\ \overline{C}_{overlap}\gt 0.4\ \land\ \mathrm{IoU}(m_i,m_j)\lt t_{override},\\
           \text{suppress}, & \text{otherwise}.
           \end{cases}
           \]
@@ -1120,7 +1151,7 @@
           <div class="def">
             <b>Detailed Explanation:</b><br>
             1) \(\mathrm{IoU}(m_i,m_j)\) is the intersection-over-union of candidate masks, and \(t_{nms}\) is the regular suppression threshold (default 0.7).<br>
-            2) \(n_{ov}\) is the number of pixels in the overlap region; the mean crossing confidence \(\overline{C}_{overlap}\) is computed only when \(n_{ov}\gt 4\).<br>
+            2) \(n_{ov}\) is the number of pixels in the overlap region; the mean crossing confidence \(\overline{C}_{overlap}\) is computed only when \(n_{ov}\ge 5\), exactly matching <code>crossing_min_overlap=5</code> in the code.<br>
             3) When IoU exceeds the base threshold and crossing evidence is insufficient (overlap too small or \(\overline{C}_{overlap}\le 0.4\)), the pair is treated as duplicate candidates and suppressed.<br>
             4) When IoU exceeds the base threshold and crossing evidence is sufficient, both instances are kept if IoU is still below the relaxed threshold \(t_{override}\) (default 0.92).<br>
             5) This logic matches `_should_suppress` in the code: it preserves deduplication ability while improving recall in crossing scenarios.
@@ -1157,7 +1188,7 @@
             <li>Default training hyperparameters: <code>img_size=512</code>, <code>batch_size=4</code>, <code>epochs=100</code>, <code>lr=2e-4</code>.</li>
             <li>Default backbone: <code>dims=64/128/256/512</code>, <code>blocks=2/2/4/2</code>, <code>chunk_size=64</code>.</li>
             <li>Default decoder: <code>num_queries=240</code>, <code>layers=6</code>, <code>heads=8</code>, <code>align_topk=96</code>, <code>cross_attn_topk=1024</code>, <code>use_query_routing=True</code>, <code>memory_bottleneck_ratio=0.5</code>.</li>
-            <li>Default losses: 16 primary loss terms + 2 optional terms (default weight 0).</li>
+            <li>Default losses: 16 primary loss terms + 2 optional terms (default weight 0); uncertainty weighting is enabled by default for scalar aggregation.</li>
             <li>Default scheduling: <code>warmup_epochs=5</code>, <code>ema_decay=0.999</code>, <code>loss_ramp_epochs=10</code>.</li>
             <li>Default inference thresholds: <code>score=0.35</code>, <code>mask=0.5</code>, <code>top_k=120</code>, <code>min_pixels=24</code>, <code>nms=0.7</code>, <code>override=0.92</code>, <code>crossing_conf=0.4</code>, <code>min_overlap=5</code>, <code>quality_power=1.0</code>.</li>
             <li>Legend path: supported in code, inactive in the default data flow.</li>

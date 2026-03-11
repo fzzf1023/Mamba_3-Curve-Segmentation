@@ -1,18 +1,14 @@
 """
-评测指标模块 — 实例分割 + 拓扑指标
+Evaluation metrics for chart curve segmentation and extraction.
 
-提供以下指标：
-  · mAP@50, mAP@75, mAP@50:95 (COCO 标准; 优先使用 pycocotools 官方 API)
-  · PQ (Panoptic Quality)
-  · Skeleton Recall / clDice (拓扑连通性)
-  · 像素级 IoU、Dice
+The metrics are organized around the repository's end goal:
+  - final curve extraction quality
+  - topology / continuity quality
+  - instance separation quality for the query-based SOTA model
 
-供 train.py validate() 调用，也可独立运行评测。
-
-依赖说明:
-  - pycocotools (可选): 安装后自动使用官方 COCO AP 计算（101 点插值），
-    否则回退到 VOC 全点插值方案，结果略有差异。
-    安装: pip install pycocotools
+For `CurveSOTAQueryNet`, both instance metrics and merged curve masks are
+computed from the post-processed inference results so that validation matches
+the model's actual extraction behavior.
 """
 
 from __future__ import annotations
@@ -21,8 +17,13 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import torch
-import torch.nn.functional as F
 from torch import Tensor
+
+
+def _ensure_channel_first(mask: Tensor) -> Tensor:
+    if mask.dim() == 3:
+        return mask.unsqueeze(1)
+    return mask
 
 
 # ---------------------------------------------------------------------------
@@ -30,21 +31,16 @@ from torch import Tensor
 # ---------------------------------------------------------------------------
 
 def _iou_matrix(pred_masks: Tensor, gt_masks: Tensor, eps: float = 1e-6) -> Tensor:
-    """Compute pairwise IoU between predicted and GT binary masks.
-
-    pred_masks: (N_pred, H, W)  bool or float
-    gt_masks:   (N_gt, H, W)    bool or float
-    Returns:    (N_pred, N_gt)   float IoU matrix
-    """
-    p = pred_masks.float().flatten(1)   # (N_pred, HW)
-    g = gt_masks.float().flatten(1)     # (N_gt, HW)
+    """Compute pairwise IoU between predicted and GT binary masks."""
+    p = pred_masks.float().flatten(1)
+    g = gt_masks.float().flatten(1)
     inter = torch.einsum("pd,gd->pg", p, g)
     union = p.sum(1, keepdim=True) + g.sum(1).unsqueeze(0) - inter
     return inter / (union + eps)
 
 
 # ---------------------------------------------------------------------------
-# AP (Average Precision) at a single IoU threshold
+# AP (Average Precision)
 # ---------------------------------------------------------------------------
 
 def _ap_at_threshold(
@@ -53,13 +49,7 @@ def _ap_at_threshold(
     gt_masks: Tensor,
     iou_thresh: float,
 ) -> float:
-    """Compute AP at a single IoU threshold using greedy matching.
-
-    pred_masks:  (N_pred, H, W) binary
-    pred_scores: (N_pred,) confidence
-    gt_masks:    (N_gt, H, W) binary
-    Returns: AP (float)
-    """
+    """Compute AP at a single IoU threshold using greedy matching."""
     n_pred = pred_masks.shape[0]
     n_gt = gt_masks.shape[0]
 
@@ -68,18 +58,16 @@ def _ap_at_threshold(
     if n_pred == 0:
         return 0.0
 
-    # sort predictions by descending score
     order = torch.argsort(pred_scores, descending=True)
     pred_masks = pred_masks[order]
     pred_scores = pred_scores[order]
 
-    iou = _iou_matrix(pred_masks, gt_masks)   # (N_pred, N_gt)
+    iou = _iou_matrix(pred_masks, gt_masks)
     matched_gt = set()
     tp = torch.zeros(n_pred)
     fp = torch.zeros(n_pred)
 
     for i in range(n_pred):
-        # Mask already-matched GTs so argmax finds the best *unmatched* GT
         row = iou[i].clone()
         for already in matched_gt:
             row[already] = -1.0
@@ -91,28 +79,21 @@ def _ap_at_threshold(
         else:
             fp[i] = 1.0
 
-    # precision-recall curve
     tp_cum = tp.cumsum(0)
     fp_cum = fp.cumsum(0)
     recall = tp_cum / n_gt
     precision = tp_cum / (tp_cum + fp_cum)
 
-    # AP via all-point interpolation (PASCAL VOC style)
     recall = torch.cat([torch.tensor([0.0]), recall, torch.tensor([1.0])])
     precision = torch.cat([torch.tensor([0.0]), precision, torch.tensor([0.0])])
 
     for i in range(len(precision) - 2, -1, -1):
         precision[i] = max(precision[i], precision[i + 1])
 
-    # integrate
     indices = (recall[1:] != recall[:-1]).nonzero(as_tuple=True)[0]
     ap = float(((recall[indices + 1] - recall[indices]) * precision[indices + 1]).sum())
     return ap
 
-
-# ---------------------------------------------------------------------------
-# mAP @ multiple thresholds
-# ---------------------------------------------------------------------------
 
 def compute_map(
     pred_masks_list: List[Tensor],
@@ -120,17 +101,7 @@ def compute_map(
     gt_masks_list: List[Tensor],
     iou_thresholds: Optional[List[float]] = None,
 ) -> Dict[str, float]:
-    """Compute mAP over a batch of images.
-
-    Args:
-        pred_masks_list:  List of (N_pred, H, W) binary tensors
-        pred_scores_list: List of (N_pred,) score tensors
-        gt_masks_list:    List of (N_gt, H, W) binary tensors
-        iou_thresholds:   IoU thresholds; default COCO [0.50:0.05:0.95]
-
-    Returns:
-        {"mAP50": float, "mAP75": float, "mAP50_95": float}
-    """
+    """Compute mAP across IoU thresholds."""
     if iou_thresholds is None:
         iou_thresholds = [0.5 + 0.05 * i for i in range(10)]
 
@@ -141,8 +112,10 @@ def compute_map(
             ap = _ap_at_threshold(pred_m, pred_s, gt_m, t)
             aps_per_thresh[t].append(ap)
 
-    mean_per_thresh = {t: float(np.mean(v)) if v else 0.0
-                       for t, v in aps_per_thresh.items()}
+    mean_per_thresh = {
+        t: float(np.mean(v)) if v else 0.0
+        for t, v in aps_per_thresh.items()
+    }
 
     return {
         "mAP50": mean_per_thresh.get(0.5, 0.0),
@@ -152,7 +125,7 @@ def compute_map(
 
 
 # ---------------------------------------------------------------------------
-# COCO-official AP via pycocotools (optional, more accurate than VOC style)
+# COCO AP via pycocotools
 # ---------------------------------------------------------------------------
 
 def _try_coco_ap(
@@ -160,23 +133,17 @@ def _try_coco_ap(
     pred_scores_list: List[Tensor],
     gt_masks_list: List[Tensor],
 ) -> Optional[Dict[str, float]]:
-    """Compute COCO AP using pycocotools if available.
-
-    Converts binary masks to RLE annotations, builds COCO-style dataset/result
-    objects, then calls COCOeval for official 101-point interpolated AP.
-
-    Returns None if pycocotools is not installed.
-    """
+    """Compute official COCO mask AP if pycocotools is available."""
     try:
+        import contextlib
+        import io
+
         from pycocotools import mask as coco_mask
         from pycocotools.coco import COCO
         from pycocotools.cocoeval import COCOeval
-        import io
-        import contextlib
     except ImportError:
         return None
 
-    # --- Build GT COCO dataset ---
     images, anns_gt = [], []
     ann_id = 1
     for img_id, gt_m in enumerate(gt_masks_list):
@@ -185,15 +152,17 @@ def _try_coco_ap(
             m_np = mask.cpu().numpy().astype("uint8")
             rle = coco_mask.encode(np.asfortranarray(m_np))
             rle["counts"] = rle["counts"].decode("utf-8")
-            anns_gt.append({
-                "id": ann_id,
-                "image_id": img_id,
-                "category_id": 1,
-                "segmentation": rle,
-                "area": float(m_np.sum()),
-                "bbox": [0, 0, m_np.shape[1], m_np.shape[0]],
-                "iscrowd": 0,
-            })
+            anns_gt.append(
+                {
+                    "id": ann_id,
+                    "image_id": img_id,
+                    "category_id": 1,
+                    "segmentation": rle,
+                    "area": float(m_np.sum()),
+                    "bbox": [0, 0, m_np.shape[1], m_np.shape[0]],
+                    "iscrowd": 0,
+                }
+            )
             ann_id += 1
 
     coco_gt = COCO()
@@ -205,7 +174,6 @@ def _try_coco_ap(
     with contextlib.redirect_stdout(io.StringIO()):
         coco_gt.createIndex()
 
-    # --- Build predictions ---
     anns_dt = []
     for img_id, (pred_m, pred_s) in enumerate(zip(pred_masks_list, pred_scores_list)):
         for mask, score in zip(pred_m, pred_s):
@@ -214,12 +182,14 @@ def _try_coco_ap(
                 continue
             rle = coco_mask.encode(np.asfortranarray(m_np))
             rle["counts"] = rle["counts"].decode("utf-8")
-            anns_dt.append({
-                "image_id": img_id,
-                "category_id": 1,
-                "segmentation": rle,
-                "score": float(score),
-            })
+            anns_dt.append(
+                {
+                    "image_id": img_id,
+                    "category_id": 1,
+                    "segmentation": rle,
+                    "score": float(score),
+                }
+            )
 
     if not anns_dt:
         return {"coco_mAP50": 0.0, "coco_mAP75": 0.0, "coco_mAP50_95": 0.0}
@@ -231,16 +201,16 @@ def _try_coco_ap(
         coco_eval.accumulate()
         coco_eval.summarize()
 
-    stats = coco_eval.stats  # [mAP@[.5:.95], mAP@.5, mAP@.75, ...]
+    stats = coco_eval.stats
     return {
         "coco_mAP50_95": float(stats[0]),
-        "coco_mAP50":    float(stats[1]),
-        "coco_mAP75":    float(stats[2]),
+        "coco_mAP50": float(stats[1]),
+        "coco_mAP75": float(stats[2]),
     }
 
 
 # ---------------------------------------------------------------------------
-# Panoptic Quality (PQ)
+# Panoptic Quality
 # ---------------------------------------------------------------------------
 
 def compute_pq(
@@ -249,12 +219,7 @@ def compute_pq(
     gt_masks_list: List[Tensor],
     iou_thresh: float = 0.5,
 ) -> Dict[str, float]:
-    """Panoptic Quality = SQ × RQ.
-
-    SQ (Segmentation Quality): average IoU of matched pairs
-    RQ (Recognition Quality):  F1 of matching
-    PQ = SQ × RQ
-    """
+    """Panoptic Quality = SQ x RQ."""
     total_tp = 0
     total_fp = 0
     total_fn = 0
@@ -277,10 +242,8 @@ def compute_pq(
         matched_gt = set()
         matched_pred = set()
 
-        # greedy matching by IoU (descending)
         order = torch.argsort(pred_s, descending=True)
         for i in order.tolist():
-            # Mask already-matched GTs so max finds the best *unmatched* GT
             row = iou[i].clone()
             for already in matched_gt:
                 row[already] = -1.0
@@ -306,7 +269,7 @@ def compute_pq(
 
 
 # ---------------------------------------------------------------------------
-# Pixel-level semantic metrics
+# Pixel / topology metrics
 # ---------------------------------------------------------------------------
 
 def compute_pixel_metrics(
@@ -314,50 +277,41 @@ def compute_pixel_metrics(
     gt: Tensor,
     eps: float = 1e-6,
 ) -> Dict[str, float]:
-    """Pixel-level IoU and Dice for binary masks.
-
-    pred, gt: (B, 1, H, W) or (B, H, W) float in [0,1] or binary
-    """
+    """Pixel-level IoU, Dice, precision, and recall for binary masks."""
     p = (pred > 0.5).float().flatten()
-    g = gt.float().flatten()
-    inter = (p * g).sum()
-    union = p.sum() + g.sum() - inter
-    iou = float((inter + eps) / (union + eps))
-    dice = float((2 * inter + eps) / (p.sum() + g.sum() + eps))
-    return {"pixel_iou": iou, "pixel_dice": dice}
+    g = (gt > 0.5).float().flatten()
+    tp = (p * g).sum()
+    fp = (p * (1.0 - g)).sum()
+    fn = ((1.0 - p) * g).sum()
+    union = tp + fp + fn
 
-
-# ---------------------------------------------------------------------------
-# Topology metrics: Skeleton Recall, soft clDice
-# ---------------------------------------------------------------------------
-
-def _soft_erode_np(mask: np.ndarray) -> np.ndarray:
-    """Morphological erosion via min filter."""
-    from scipy.ndimage import minimum_filter
-    return minimum_filter(mask, size=3)
+    return {
+        "pixel_iou": float((tp + eps) / (union + eps)),
+        "pixel_dice": float((2 * tp + eps) / (2 * tp + fp + fn + eps)),
+        "pixel_precision": float((tp + eps) / (tp + fp + eps)),
+        "pixel_recall": float((tp + eps) / (tp + fn + eps)),
+    }
 
 
 def _skeletonize_np(mask: np.ndarray) -> np.ndarray:
-    """Binary skeletonization using skimage if available, else morphological thinning."""
+    """Binary skeletonization using skimage if available, else morphology."""
     try:
         from skimage.morphology import skeletonize
+
         return skeletonize(mask > 0.5).astype(np.float32)
     except ImportError:
-        # fallback: iterative erosion-based approximation
-        binary = (mask > 0.5).astype(np.float32)
-        skel = np.zeros_like(binary)
-        elem = np.ones((3, 3), dtype=np.uint8)
-        import cv2
-        temp = binary.copy().astype(np.uint8)
-        while True:
-            eroded = cv2.erode(temp, elem)
-            opened = cv2.dilate(eroded, elem)
-            diff = temp - opened
-            skel = np.clip(skel + diff.astype(np.float32), 0, 1)
+        from scipy import ndimage as ndi
+
+        binary = mask > 0.5
+        skel = np.zeros_like(binary, dtype=bool)
+        elem = np.ones((3, 3), dtype=bool)
+        temp = binary.copy()
+        while temp.any():
+            eroded = ndi.binary_erosion(temp, structure=elem, border_value=0)
+            opened = ndi.binary_dilation(eroded, structure=elem)
+            skel |= temp & ~opened
             temp = eroded
-            if temp.sum() == 0:
-                break
-        return skel
+        return skel.astype(np.float32)
 
 
 def compute_skeleton_recall(
@@ -365,28 +319,15 @@ def compute_skeleton_recall(
     gt_centerline: Tensor,
     eps: float = 1e-6,
 ) -> float:
-    """Skeleton recall: fraction of GT centerline pixels covered by prediction.
-
-    pred_masks:    (B, 1, H, W) float [0,1] — predicted mask probabilities
-    gt_centerline: (B, 1, H, W) float — GT centerline (1px skeleton)
-
-    Returns: scalar recall in [0, 1]
-    """
+    """Fraction of GT centerline pixels covered by the final extracted curves."""
     pred = (pred_masks > 0.5).float()
-    gt = gt_centerline.float()
+    gt = (gt_centerline > 0.5).float()
     recall = float(((pred * gt).sum() + eps) / (gt.sum() + eps))
     return recall
 
 
-def compute_cldice(
-    pred_masks: Tensor,
-    gt_masks: Tensor,
-) -> float:
-    """Compute clDice using hard skeletons (numpy-based).
-
-    pred_masks, gt_masks: (B, 1, H, W) float
-    Returns: clDice score in [0, 1]
-    """
+def compute_cldice(pred_masks: Tensor, gt_masks: Tensor) -> float:
+    """Topology-aware clDice computed from hard masks."""
     pred_np = pred_masks.detach().cpu().numpy()
     gt_np = gt_masks.detach().cpu().numpy()
 
@@ -395,7 +336,7 @@ def compute_cldice(
 
     for b in range(pred_np.shape[0]):
         p = (pred_np[b, 0] > 0.5).astype(np.float32)
-        g = gt_np[b, 0]
+        g = (gt_np[b, 0] > 0.5).astype(np.float32)
 
         if g.sum() < 1:
             continue
@@ -413,12 +354,83 @@ def compute_cldice(
 
     tprec = tprec_total / tprec_denom
     tsens = tsens_total / tsens_denom
-    cldice = 2 * tprec * tsens / (tprec + tsens + 1e-8)
-    return float(cldice)
+    return float(2 * tprec * tsens / (tprec + tsens + 1e-8))
 
 
 # ---------------------------------------------------------------------------
-# Unified evaluation function
+# Extraction helpers
+# ---------------------------------------------------------------------------
+
+def _instance_ids_to_mask_list(instance_ids: Tensor) -> List[Tensor]:
+    """Convert a batch of instance-id maps into per-image mask stacks."""
+    results: List[Tensor] = []
+    for ids in instance_ids:
+        uids = torch.unique(ids)
+        uids = uids[uids > 0]
+        if uids.numel() > 0:
+            masks = torch.stack([(ids == uid) for uid in uids], dim=0)
+        else:
+            h, w = ids.shape[-2:]
+            masks = torch.zeros(0, h, w, dtype=torch.bool, device=ids.device)
+        results.append(masks)
+    return results
+
+
+def _postprocessed_instance_results(
+    outputs: Dict[str, Tensor],
+    score_thresh: float,
+    mask_thresh: float,
+) -> List[Dict[str, Tensor]]:
+    """Run SOTA post-processing so validation matches final inference."""
+    from curve_sota_query_seg import InferenceConfig, postprocess_curve_instances
+
+    cfg = InferenceConfig(score_thresh=score_thresh, mask_thresh=mask_thresh)
+    return postprocess_curve_instances(outputs, cfg)
+
+
+def _merge_instance_masks(
+    instance_results: List[Dict[str, Tensor]],
+    height: int,
+    width: int,
+) -> Tensor:
+    """Union post-processed instances into a final extracted curve mask."""
+    merged: List[Tensor] = []
+    for result in instance_results:
+        masks = result["masks"]
+        if masks.numel() == 0:
+            merged.append(
+                torch.zeros(1, height, width, dtype=torch.float32, device=masks.device)
+            )
+        else:
+            merged.append(masks.any(dim=0, keepdim=True).float())
+    return torch.stack(merged, dim=0)
+
+
+def _extract_curve_predictions(
+    outputs: Dict[str, Tensor],
+    score_thresh: float,
+    mask_thresh: float,
+) -> Tuple[Tensor, Optional[List[Tensor]], Optional[List[Tensor]]]:
+    """Build the final extracted curve masks used for extraction metrics."""
+    if "pred_logits" in outputs and "pred_masks" in outputs:
+        instance_results = _postprocessed_instance_results(outputs, score_thresh, mask_thresh)
+        height, width = outputs["pred_masks"].shape[-2:]
+        curve_probs = _merge_instance_masks(instance_results, height, width)
+        pred_masks_list = [result["masks"] for result in instance_results]
+        pred_scores_list = [result["scores"] for result in instance_results]
+        return curve_probs, pred_masks_list, pred_scores_list
+
+    if "composed_mask" in outputs:
+        return _ensure_channel_first(outputs["composed_mask"]), None, None
+
+    if "centerline_logits" in outputs:
+        return _ensure_channel_first(torch.sigmoid(outputs["centerline_logits"])), None, None
+
+    raise KeyError("No usable curve extraction output found in model outputs.")
+
+
+# ---------------------------------------------------------------------------
+# Unified evaluation
 # ---------------------------------------------------------------------------
 
 @torch.no_grad()
@@ -429,84 +441,45 @@ def evaluate_batch(
     score_thresh: float = 0.35,
     mask_thresh: float = 0.5,
 ) -> Dict[str, float]:
-    """Compute all metrics for a single batch.
-
-    Works with CurveSOTAQueryNet outputs or CurveInstanceMamba3Net outputs.
-
-    Returns dict with all computed metrics.
-    """
+    """Compute extraction-first metrics for a validation batch."""
     metrics: Dict[str, float] = {}
-    bsz = targets["instance_ids"].shape[0]
+    curve_probs, pred_masks_list, pred_scores_list = _extract_curve_predictions(
+        outputs, score_thresh, mask_thresh
+    )
 
-    # --- Instance-level metrics (for query-based model) ---
-    if "pred_logits" in outputs and "pred_masks" in outputs:
-        cls_scores = outputs["pred_logits"].softmax(-1)[..., 1]      # (B, Q)
-        if "pred_quality" in outputs:
-            cls_scores = cls_scores * torch.sigmoid(outputs["pred_quality"])
-        pred_mask_probs = torch.sigmoid(outputs["pred_masks"])       # (B, Q, H, W)
+    # Instance-level metrics for the SOTA model only.
+    if pred_masks_list is not None and pred_scores_list is not None and "instance_ids" in targets:
+        gt_masks_list = _instance_ids_to_mask_list(targets["instance_ids"].to(device).long())
+        metrics.update(compute_map(pred_masks_list, pred_scores_list, gt_masks_list))
 
-        pred_masks_list = []
-        pred_scores_list = []
-        gt_masks_list = []
-
-        ids = targets["instance_ids"].to(device).long()
-        for b in range(bsz):
-            # predictions
-            valid = cls_scores[b] > score_thresh
-            p_masks = (pred_mask_probs[b, valid] > mask_thresh)
-            p_scores = cls_scores[b, valid]
-            pred_masks_list.append(p_masks)
-            pred_scores_list.append(p_scores)
-
-            # GT
-            uids = torch.unique(ids[b])
-            uids = uids[uids > 0]
-            if uids.numel() > 0:
-                g_masks = torch.stack([(ids[b] == uid) for uid in uids], dim=0)
-            else:
-                g_masks = torch.zeros(0, ids.shape[1], ids.shape[2],
-                                      dtype=torch.bool, device=device)
-            gt_masks_list.append(g_masks)
-
-        map_results = compute_map(pred_masks_list, pred_scores_list, gt_masks_list)
-        metrics.update(map_results)
-
-        # Official COCO AP (101-point interpolation via pycocotools, if installed)
         coco_results = _try_coco_ap(pred_masks_list, pred_scores_list, gt_masks_list)
         if coco_results is not None:
             metrics.update(coco_results)
 
-        pq_results = compute_pq(pred_masks_list, pred_scores_list, gt_masks_list)
-        metrics.update(pq_results)
+        metrics.update(compute_pq(pred_masks_list, pred_scores_list, gt_masks_list))
 
-    # --- Pixel-level metrics ---
+    # Dense centerline-head quality.
     if "centerline_logits" in outputs and "centerline_mask" in targets:
-        center_pred = torch.sigmoid(outputs["centerline_logits"])
-        center_gt = targets["centerline_mask"].to(device).float()
-        if center_gt.dim() == 3:
-            center_gt = center_gt.unsqueeze(1)
+        center_pred = _ensure_channel_first(torch.sigmoid(outputs["centerline_logits"]))
+        center_gt = _ensure_channel_first(targets["centerline_mask"].to(device).float())
         pix = compute_pixel_metrics(center_pred, center_gt)
         metrics["centerline_iou"] = pix["pixel_iou"]
         metrics["centerline_dice"] = pix["pixel_dice"]
+        metrics["centerline_precision"] = pix["pixel_precision"]
+        metrics["centerline_recall"] = pix["pixel_recall"]
 
-    # --- Skeleton Recall ---
-    if "centerline_logits" in outputs and "centerline_mask" in targets:
-        composed = outputs.get("composed_mask", torch.sigmoid(outputs["centerline_logits"]))
-        center_gt = targets["centerline_mask"].to(device).float()
-        if center_gt.dim() == 3:
-            center_gt = center_gt.unsqueeze(1)
-        if composed.dim() == 3:
-            composed = composed.unsqueeze(1)
-        metrics["skeleton_recall"] = compute_skeleton_recall(composed, center_gt)
+        # Final extracted curve coverage over GT centerlines.
+        metrics["skeleton_recall"] = compute_skeleton_recall(curve_probs, center_gt)
 
-    # --- Curve mask IoU/Dice ---
-    if "composed_mask" in outputs and "curve_mask" in targets:
-        curve_gt = targets["curve_mask"].to(device).float()
-        if curve_gt.dim() == 3:
-            curve_gt = curve_gt.unsqueeze(1)
-        pix = compute_pixel_metrics(outputs["composed_mask"], curve_gt)
+    # Final extracted curves versus GT curve regions.
+    if "curve_mask" in targets:
+        curve_gt = _ensure_channel_first(targets["curve_mask"].to(device).float())
+        pix = compute_pixel_metrics(curve_probs, curve_gt)
         metrics["curve_iou"] = pix["pixel_iou"]
         metrics["curve_dice"] = pix["pixel_dice"]
+        metrics["curve_precision"] = pix["pixel_precision"]
+        metrics["curve_recall"] = pix["pixel_recall"]
+        metrics["curve_cldice"] = compute_cldice(curve_probs, curve_gt)
 
     return metrics
 
@@ -516,10 +489,10 @@ def aggregate_metrics(metric_list: List[Dict[str, float]]) -> Dict[str, float]:
     if not metric_list:
         return {}
     all_keys = set()
-    for m in metric_list:
-        all_keys.update(m.keys())
+    for metrics in metric_list:
+        all_keys.update(metrics.keys())
     result = {}
-    for k in sorted(all_keys):
-        vals = [m[k] for m in metric_list if k in m]
-        result[k] = float(np.mean(vals)) if vals else 0.0
+    for key in sorted(all_keys):
+        vals = [metrics[key] for metrics in metric_list if key in metrics]
+        result[key] = float(np.mean(vals)) if vals else 0.0
     return result

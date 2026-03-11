@@ -167,10 +167,17 @@ Infer branch:
 
 ## Model Variants
 
-| Model | Entry point | Default status | Main outputs |
+The repository keeps two segmentation variants that share the same Mamba-style spatial backbone but target different use cases.
+
+| Variant | Class | Recommended use | What it predicts |
 | --- | --- | --- | --- |
-| Base | `CurveInstanceMamba3Net` | optional | `composed_mask`, embeddings, topology heads |
-| SOTA | `CurveSOTAQueryNet` | default | query logits, query masks, quality, topology heads |
+| Base | `CurveInstanceMamba3Net` | Baseline experiments, lighter ablations, dense pixel prediction | A composed curve mask, instance embeddings, and topology-related dense heads |
+| SOTA | `CurveSOTAQueryNet` | Default training, instance-level evaluation, best overall performance | Query logits, per-instance masks, mask quality, and auxiliary topology heads |
+
+In short:
+
+- `Base` is a dense prediction baseline centered on `centerline + width -> composed_mask`.
+- `SOTA` is the main query-based instance segmentation model with matching, denoising, and crossing-aware post-processing.
 
 The training script defaults to:
 
@@ -331,15 +338,31 @@ Notes:
 
 ## Evaluation
 
-Validation during training uses `evaluate.py` and reports metrics such as:
+Validation during training uses `evaluate.py` with an extraction-first metric design.
+
+Primary metrics for the repository's final goal, curve segmentation and extraction:
+
+- `curve_iou`, `curve_dice`: overlap quality of the final extracted curve mask
+- `curve_precision`, `curve_recall`: how cleanly the extracted curve set covers GT curves
+- `curve_cldice`: topology-aware quality of the extracted curves
+- `skeleton_recall`: how much of the GT centerline is covered by the final extracted result
+
+Auxiliary dense-head diagnostics:
+
+- `centerline_iou`, `centerline_dice`
+- `centerline_precision`, `centerline_recall`
+
+Instance-level metrics for the default `CurveSOTAQueryNet` only:
 
 - `mAP50`, `mAP75`, `mAP50:95`
 - `PQ`
-- `skeleton_recall`
-- `centerline_iou`, `centerline_dice`
-- `curve_iou`, `curve_dice` for base-model composed masks
+- optional `coco_mAP50`, `coco_mAP75`, `coco_mAP50:95` when `pycocotools` is installed
 
-If `pycocotools` is installed, official COCO AP is computed through `COCOeval`. Otherwise the code falls back to a non-official interpolation path.
+Important detail:
+
+- For `CurveSOTAQueryNet`, instance metrics and merged curve-mask metrics are computed from the post-processed inference results, not from raw decoder queries.
+- For the base model, `curve_*` metrics are computed from the dense `composed_mask`.
+- `COCO AP` is treated as a supplemental instance-separation metric, not the primary metric for curve extraction quality.
 
 ## Loss System
 
