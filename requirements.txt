@@ -1,0 +1,20 @@
+# Core dependencies
+torch>=2.1.0
+einops>=0.7.0
+
+# Mamba3 text model (optional)
+tiktoken
+
+# Curve instance segmentation task
+numpy>=1.24.0
+opencv-python>=4.8.0
+scipy>=1.10.0
+albumentations>=1.4.0
+scikit-image>=0.21.0
+
+# Evaluation (optional but recommended for COCO AP)
+pycocotools>=2.0.7
+
+# Profiling (optional, for profile_model.py)
+# fvcore>=0.1.5  # from fvcore.nn import FlopCountAnalysis
+# thop>=0.1.1    # from thop import profile

@@ -1,0 +1,43 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Test and coverage artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE / editor files
+.idea/
+.claude/
+*.iml
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build / packaging artifacts
+build/
+dist/
+*.egg-info/
+
+# Training outputs and checkpoints
+checkpoints/
+outputs/
+runs/
+wandb/
+logs/
+*.pt
+*.pth
+*.ckpt
+
+# Generated debug / inference files
+dataset_debug.png
+*_pred.jpg

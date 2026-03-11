@@ -1,0 +1,1226 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Chart Curve Instance Segmentation Model</title>
+  <style>
+    :root {
+      --bg: #f6f8fa;
+      --paper: #ffffff;
+      --text: #24292f;
+      --muted: #57606a;
+      --line: #d0d7de;
+      --line-soft: #d8dee4;
+      --accent: #0969da;
+      --soft: #f6f8fa;
+      --soft-2: #f1f8ff;
+      --code: #f6f8fa;
+      --note: #ddf4ff;
+      --success: #dafbe1;
+      --warn: #fff8c5;
+    }
+    html { scroll-behavior: smooth; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--text);
+      font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      background: var(--bg);
+    }
+    a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+    a:hover { text-decoration: underline; }
+    code {
+      padding: 0.14em 0.34em;
+      border-radius: 6px;
+      background: rgba(175, 184, 193, 0.2);
+      font: 85%/1.45 Consolas, "SFMono-Regular", Monaco, "Liberation Mono", Menlo, monospace;
+    }
+    .wrap {
+      max-width: 1280px;
+      margin: 24px auto 48px;
+      padding: 0 16px;
+    }
+    .paper {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      box-shadow: 0 1px 3px rgba(27, 31, 36, 0.04);
+      padding: 36px 44px 40px;
+    }
+    h1, h2, h3, h4 {
+      margin: 0 0 12px;
+      line-height: 1.3;
+    }
+    h1 {
+      font-size: 2rem;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--line-soft);
+    }
+    h2 {
+      margin-top: 28px;
+      font-size: 1.5rem;
+      font-weight: 600;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--line-soft);
+    }
+    h3 {
+      margin-top: 20px;
+      font-size: 1.25rem;
+      font-weight: 600;
+    }
+    h4 {
+      margin-top: 0;
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+    p { margin: 10px 0; }
+    ul, ol { margin: 8px 0 14px 22px; }
+    li { margin: 4px 0; }
+
+    .lead {
+      margin: 14px 0 16px;
+      color: var(--muted);
+      font-size: 1rem;
+    }
+    .repo-badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 14px 0 14px;
+    }
+    .repo-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 10px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--paper);
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 500;
+    }
+    .repo-badge strong {
+      color: var(--text);
+      font-weight: 600;
+    }
+    .meta {
+      margin: 0 0 20px;
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--accent);
+      border-radius: 6px;
+      background: var(--soft-2);
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .toc {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px 18px;
+      margin: 0 0 26px;
+      padding: 16px 18px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--soft);
+    }
+    .toc::before {
+      content: "Table of contents";
+      grid-column: 1 / -1;
+      margin-bottom: 2px;
+      color: var(--text);
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .toc a {
+      position: relative;
+      padding-left: 16px;
+      font-size: 14px;
+      color: var(--accent);
+      white-space: normal;
+    }
+    .toc a::before {
+      content: "-";
+      position: absolute;
+      left: 0;
+      top: 0;
+      color: var(--muted);
+    }
+
+    .slide {
+      margin-top: 36px;
+      border: none;
+      border-radius: 0;
+      background: transparent;
+      overflow: visible;
+    }
+    .slide-head {
+      padding: 0 0 12px;
+      border-bottom: 1px solid var(--line-soft);
+      background: none;
+      font-size: 1.55rem;
+      color: var(--text);
+      font-weight: 600;
+    }
+    .slide-body { padding: 18px 0 0; }
+
+    .summary {
+      margin: 0 0 18px;
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--accent);
+      border-radius: 6px;
+      background: var(--soft-2);
+      padding: 14px 16px;
+      color: var(--text);
+    }
+
+    .eq {
+      margin: 14px 0;
+      padding: 12px 14px;
+      border-radius: 6px;
+      border: 1px solid var(--line);
+      background: var(--code);
+      overflow-x: auto;
+    }
+    .eq .mjx-container {
+      overflow-x: auto;
+      overflow-y: hidden;
+      padding: 2px 0;
+    }
+    .def {
+      margin: 12px 0 16px;
+      padding: 12px 14px;
+      border-radius: 6px;
+      border: 1px solid var(--line);
+      border-left: 4px solid #54aeff;
+      background: #f6fbff;
+      color: var(--text);
+      font-size: 14px;
+    }
+    .def b {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+    }
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--paper);
+      padding: 14px 16px;
+    }
+    .badge {
+      display: inline-block;
+      font-size: 12px;
+      margin-right: 8px;
+      margin-bottom: 8px;
+      padding: 3px 9px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: var(--soft);
+      color: var(--muted);
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      margin: 12px 0 16px;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      min-width: 940px;
+      font-size: 14px;
+    }
+    th, td {
+      border-right: 1px solid var(--line-soft);
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+      padding: 10px 12px;
+    }
+    th:last-child, td:last-child { border-right: none; }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr:nth-child(2n) td { background: #f6f8fa; }
+    thead th {
+      color: var(--text);
+      background: #f6f8fa;
+      font-weight: 600;
+    }
+
+    .raw {
+      margin-top: 12px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--code);
+      padding: 12px 14px;
+      white-space: pre-wrap;
+      font: 13px/1.65 Consolas, "SFMono-Regular", Monaco, "Liberation Mono", Menlo, monospace;
+    }
+
+    .flow-wrap {
+      margin: 12px 0 18px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--paper);
+      padding: 16px;
+      overflow-x: auto;
+    }
+    .flow-caption {
+      margin: 0 0 12px;
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .flow-svg {
+      width: 100%;
+      min-width: 1180px;
+      height: auto;
+      display: block;
+      border-radius: 6px;
+      background: #ffffff;
+    }
+    .flow-node text {
+      fill: #24292f;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .flow-node tspan.sub {
+      font-size: 12px;
+      font-weight: 500;
+      fill: #57606a;
+    }
+    .flow-node rect { stroke-width: 1.25; }
+    .flow-main rect { fill: #ddf4ff; stroke: #54aeff; }
+    .flow-aux rect { fill: #f6f8fa; stroke: #afb8c1; }
+    .flow-train rect { fill: #fff8c5; stroke: #d4a72c; }
+    .flow-infer rect { fill: #eaeef2; stroke: #8c959f; }
+    .flow-out rect { fill: #dafbe1; stroke: #2da44e; }
+    .flow-opt rect { fill: #fbefff; stroke: #a475f9; }
+    .flow-line {
+      stroke: #57606a;
+      stroke-width: 1.9;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      fill: none;
+      marker-end: url(#arr);
+    }
+    .flow-link {
+      stroke: #57606a;
+      stroke-width: 1.9;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      fill: none;
+    }
+    .flow-dash {
+      stroke-dasharray: 7 6;
+      stroke: #8c959f;
+      stroke-width: 1.7;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      fill: none;
+      marker-end: url(#arr-dash);
+    }
+    .flow-note {
+      font-size: 12px;
+      fill: #57606a;
+      font-weight: 600;
+    }
+    .flow-lane-title {
+      font-size: 12px;
+      font-weight: 700;
+      fill: #57606a;
+      letter-spacing: 0.15px;
+    }
+    .flow-step circle {
+      fill: var(--accent);
+      stroke: #ffffff;
+      stroke-width: 2;
+    }
+    .flow-step text {
+      fill: #ffffff;
+      font-size: 11px;
+      font-weight: 700;
+      text-anchor: middle;
+      dominant-baseline: middle;
+    }
+    .flow-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .flow-chip {
+      border-radius: 999px;
+      padding: 4px 10px;
+      border: 1px solid var(--line);
+      font-size: 12px;
+      color: var(--muted);
+      background: var(--soft);
+    }
+    .chip-main { background: #ddf4ff; border-color: #54aeff; }
+    .chip-head { background: #f6f8fa; border-color: #afb8c1; }
+    .chip-train { background: #fff8c5; border-color: #d4a72c; }
+    .chip-infer { background: #eaeef2; border-color: #8c959f; }
+    .chip-opt { background: #fbefff; border-color: #a475f9; }
+    .chip-dash { background: #f6f8fa; border-color: #afb8c1; }
+
+    @media (max-width: 980px) {
+      .paper { padding: 24px 18px 28px; }
+      .toc { grid-template-columns: 1fr; }
+      .grid-2, .grid-3 { grid-template-columns: 1fr; }
+      h1 { font-size: 1.7rem; }
+      .slide-head { font-size: 1.35rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <article class="paper">
+      <h1>Chart Curve Instance Segmentation Model</h1>
+      <p class="lead">
+        Implementation-aligned technical documentation for the current query-based chart curve segmentation pipeline, including architecture, supervision targets, training defaults, and inference rules.
+      </p>
+      <div class="repo-badges">
+        <span class="repo-badge"><strong>Default model</strong> CurveSOTAQueryNet</span>
+        <span class="repo-badge"><strong>Train command</strong> <code>train.py --model sota</code></span>
+        <span class="repo-badge"><strong>Input size</strong> <code>512 x 512</code></span>
+        <span class="repo-badge"><strong>Doc status</strong> code-aligned</span>
+      </div>
+      <div class="meta">
+        Verified against the local implementation on 2026-03-11. This page is styled as a repository README while preserving the full method walkthrough and parameter audit.
+      </div>
+
+      <nav class="toc">
+        <a href="#p0">Overall Architecture</a>
+        <a href="#p1">Task Definition, Symbols, and Evaluation Targets</a>
+        <a href="#p2">Data Labels and Supervision Entry Points</a>
+        <a href="#p3">Input Enhancement Layer</a>
+        <a href="#p4">Progressive Mamba Encoder</a>
+        <a href="#p5">Snake Scan Branch</a>
+        <a href="#p6">FPN, Grid Bias, and Pixel Topology Heads</a>
+        <a href="#p7">Query Decoder</a>
+        <a href="#p8">Legend-Guided Module</a>
+        <a href="#p9">Matching Strategy and Loss System</a>
+        <a href="#p10">Training Strategy and Learning Rate Schedule</a>
+        <a href="#p11">Inference Post-processing and Crossing Preservation</a>
+        <a href="#p12">Module Origins, Problem Mapping, and This Design</a>
+        <a href="#p13">Default Configuration Audit</a>
+        <a href="#p14">Terminology Reference</a>
+      </nav>
+
+      <section id="p0" class="slide">
+        <div class="slide-head">Overall Architecture</div>
+        <div class="slide-body">
+          <div class="summary">
+            The model consists of four stages: <b>input enhancement</b>, <b>Progressive Mamba spatial encoding</b>, <b>Query instance decoding + pixel topology branch</b>, and <b>crossing-aware post-processing</b>.
+            The design targets three core failure modes: thin-line breaks, crossing confusion, and grid interference.
+          </div>
+          <div class="flow-wrap">
+            <div class="flow-caption">End-to-end pipeline (unified training/inference view)</div>
+            <svg class="flow-svg" viewBox="0 0 1760 560" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Curve instance segmentation model flowchart">
+              <defs>
+                <marker id="arr" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5" markerHeight="5" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
+                  <path d="M 0 0 L 8 4 L 0 8 z" fill="#2a5ea9"></path>
+                </marker>
+                <marker id="arr-dash" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5" markerHeight="5" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
+                  <path d="M 0 0 L 8 4 L 0 8 z" fill="#5c6fa3"></path>
+                </marker>
+                <filter id="nodeShadow" x="-20%" y="-20%" width="140%" height="140%">
+                  <feDropShadow dx="0" dy="2.5" stdDeviation="2.2" flood-color="#1a3f70" flood-opacity="0.16"></feDropShadow>
+                </filter>
+              </defs>
+
+              <rect x="10" y="10" width="1740" height="540" rx="18" fill="#f8fbff" stroke="#d5e4ff"></rect>
+              <rect x="34" y="58" width="1266" height="126" rx="16" fill="#f2f8ff" stroke="#d4e3fa"></rect>
+              <rect x="34" y="206" width="1266" height="148" rx="16" fill="#f4faff" stroke="#d8e9fb"></rect>
+              <rect x="1310" y="58" width="430" height="296" rx="16" fill="#fef9ef" stroke="#f0ddbe"></rect>
+              <rect x="1310" y="368" width="430" height="150" rx="16" fill="#f0fbf5" stroke="#cbead8"></rect>
+
+              <text class="flow-lane-title" x="52" y="52">Backbone Feature Flow</text>
+              <text class="flow-lane-title" x="52" y="200">Dual-Branch Decoding and Optional Priors</text>
+              <text class="flow-lane-title" x="1328" y="52">Training / Inference Decision Zone</text>
+              <text class="flow-lane-title" x="1328" y="362">Final Output</text>
+
+              <g class="flow-node flow-main" filter="url(#nodeShadow)">
+                <rect x="52" y="90" width="180" height="82" rx="13"></rect>
+                <text x="142" y="118" text-anchor="middle">
+                  <tspan x="142" dy="0">Input Image</tspan>
+                  <tspan class="sub" x="142" dy="22">I ∈ R^(3×H×W)</tspan>
+                </text>
+              </g>
+              <g class="flow-step"><circle cx="66" cy="92" r="12"></circle><text x="66" y="92">1</text></g>
+
+              <g class="flow-node flow-main" filter="url(#nodeShadow)">
+                <rect x="264" y="90" width="220" height="82" rx="13"></rect>
+                <text x="374" y="118" text-anchor="middle">
+                  <tspan x="374" dy="0">Input Enhancement</tspan>
+                  <tspan class="sub" x="374" dy="22">RGB / HSV / Sobel</tspan>
+                </text>
+              </g>
+              <g class="flow-step"><circle cx="278" cy="92" r="12"></circle><text x="278" y="92">2</text></g>
+
+              <g class="flow-node flow-main" filter="url(#nodeShadow)">
+                <rect x="514" y="90" width="252" height="82" rx="13"></rect>
+                <text x="640" y="116" text-anchor="middle">
+                  <tspan x="640" dy="0">Progressive Mamba Encoder</tspan>
+                  <tspan class="sub" x="640" dy="22">f1, f2, f3, f4 multi-scale features</tspan>
+                </text>
+              </g>
+              <g class="flow-step"><circle cx="528" cy="92" r="12"></circle><text x="528" y="92">3</text></g>
+
+              <g class="flow-node flow-aux" filter="url(#nodeShadow)">
+                <rect x="796" y="90" width="252" height="82" rx="13"></rect>
+                <text x="922" y="116" text-anchor="middle">
+                  <tspan x="922" dy="0">FPN + Stem Skip + Grid Bias</tspan>
+                  <tspan class="sub" x="922" dy="22">Fused feature F</tspan>
+                </text>
+              </g>
+              <g class="flow-step"><circle cx="810" cy="92" r="12"></circle><text x="810" y="92">4</text></g>
+
+              <g class="flow-node flow-aux" filter="url(#nodeShadow)">
+                <rect x="1080" y="90" width="220" height="82" rx="13"></rect>
+                <text x="1190" y="116" text-anchor="middle">
+                  <tspan x="1190" dy="0">Query Decoder</tspan>
+                  <tspan class="sub" x="1190" dy="22">cls / quality / mask</tspan>
+                </text>
+              </g>
+              <g class="flow-step"><circle cx="1094" cy="92" r="12"></circle><text x="1094" y="92">5</text></g>
+
+              <g class="flow-node flow-aux" filter="url(#nodeShadow)">
+                <rect x="1080" y="232" width="220" height="100" rx="13"></rect>
+                <text x="1190" y="258" text-anchor="middle">
+                  <tspan x="1190" dy="0">Pixel Topology Branch</tspan>
+                  <tspan class="sub" x="1190" dy="20">centerline / crossing</tspan>
+                  <tspan class="sub" x="1190" dy="18">boundary / direction / grid</tspan>
+                </text>
+              </g>
+              <g class="flow-step"><circle cx="1094" cy="234" r="12"></circle><text x="1094" y="234">6</text></g>
+
+              <g class="flow-node flow-train" filter="url(#nodeShadow)">
+                <rect x="1340" y="86" width="360" height="104" rx="13"></rect>
+                <text x="1520" y="112" text-anchor="middle">
+                  <tspan x="1520" dy="0">Training Path</tspan>
+                  <tspan class="sub" x="1520" dy="20">Hungarian + O2M + DN</tspan>
+                  <tspan class="sub" x="1520" dy="18">16+2 Loss + AdamW / EMA / LR</tspan>
+                </text>
+              </g>
+              <g class="flow-step"><circle cx="1354" cy="88" r="12"></circle><text x="1354" y="88">7</text></g>
+
+              <g class="flow-node flow-infer" filter="url(#nodeShadow)">
+                <rect x="1340" y="232" width="360" height="104" rx="13"></rect>
+                <text x="1520" y="258" text-anchor="middle">
+                  <tspan x="1520" dy="0">Inference Path</tspan>
+                  <tspan class="sub" x="1520" dy="20">query score / quality / mask</tspan>
+                  <tspan class="sub" x="1520" dy="18">+ crossing map -> NMS + filtering</tspan>
+                </text>
+              </g>
+              <g class="flow-step"><circle cx="1354" cy="234" r="12"></circle><text x="1354" y="234">8</text></g>
+
+              <g class="flow-node flow-out" filter="url(#nodeShadow)">
+                <rect x="1340" y="398" width="360" height="88" rx="13"></rect>
+                <text x="1520" y="426" text-anchor="middle">
+                  <tspan x="1520" dy="0">Output Instance Set</tspan>
+                  <tspan class="sub" x="1520" dy="22">{(M_k, s_k)}_{k=1}^N</tspan>
+                </text>
+              </g>
+              <g class="flow-step"><circle cx="1354" cy="400" r="12"></circle><text x="1354" y="400">9</text></g>
+
+              <g class="flow-node flow-opt" filter="url(#nodeShadow)">
+                <rect x="796" y="372" width="252" height="100" rx="13"></rect>
+                <text x="922" y="398" text-anchor="middle">
+                  <tspan x="922" dy="0">Optional Legend-Guided Branch</tspan>
+                  <tspan class="sub" x="922" dy="20">A / LCAB / C / E</tspan>
+                  <tspan class="sub" x="922" dy="18">enabled when legend_patches are available</tspan>
+                </text>
+              </g>
+
+              <line class="flow-line" x1="232" y1="131" x2="264" y2="131"></line>
+              <line class="flow-line" x1="484" y1="131" x2="514" y2="131"></line>
+              <line class="flow-line" x1="766" y1="131" x2="796" y2="131"></line>
+              <line class="flow-line" x1="1048" y1="131" x2="1080" y2="131"></line>
+              <path class="flow-line" d="M 922 172 L 922 204 L 1190 204 L 1190 232"></path>
+              <path class="flow-link" d="M 1300 131 L 1318 131 L 1318 206"></path>
+              <path class="flow-link" d="M 1300 282 L 1318 282 L 1318 206"></path>
+              <line class="flow-link" x1="1318" y1="206" x2="1318" y2="147"></line>
+              <line class="flow-link" x1="1318" y1="206" x2="1318" y2="266"></line>
+              <circle cx="1318" cy="206" r="3.8" fill="#2a5ea9" opacity="0.9"></circle>
+              <line class="flow-line" x1="1318" y1="147" x2="1340" y2="147"></line>
+              <line class="flow-line" x1="1318" y1="266" x2="1340" y2="266"></line>
+              <text class="flow-note" x="1146" y="322">Only crossing directly enters post-processing</text>
+              <line class="flow-line" x1="1520" y1="336" x2="1520" y2="398"></line>
+
+              <path class="flow-dash" d="M 1340 114 C 1120 18, 892 18, 766 90"></path>
+              <text class="flow-note" x="1020" y="34">Backpropagation during training updates backbone parameters</text>
+
+              <path class="flow-dash" d="M 1048 422 L 1064 422 L 1064 172 L 1080 172"></path>
+              <text class="flow-note" x="1048" y="448">Legend priors inject Query semantics when available</text>
+            </svg>
+            <div class="flow-legend">
+              <span class="flow-chip chip-main">Backbone Feature Flow</span>
+              <span class="flow-chip chip-head">Dual-Branch Decoding</span>
+              <span class="flow-chip chip-train">Training Path</span>
+              <span class="flow-chip chip-infer">Inference Path</span>
+              <span class="flow-chip chip-opt">Optional Legend Path</span>
+              <span class="flow-chip chip-dash">Dashed lines: conditional / backward paths</span>
+            </div>
+          </div>
+          <div class="eq">\[
+          I \rightarrow \text{RGB/HSV/Sobel Enhancement}
+          \rightarrow \text{Progressive Mamba Encoder}
+          \rightarrow \text{FPN + Stem Skip + Grid Bias}
+          \rightarrow \Big[\text{Query Decoder} \parallel \text{Topology Heads}\Big],
+          \]
+          </div>
+          <div class="eq">\[
+          \text{Train branch: }\text{Hungarian + O2M + DN + 16{+}2 Loss + AdamW/EMA/LR},
+          \]
+          </div>
+          <div class="eq">\[
+          \text{Infer branch (postprocess\_curve\_instances): }\text{query logits/quality/masks + crossing map}.
+          \]
+          </div>
+          <div class="grid-3">
+            <div class="card">
+              <h4>Architecture</h4>
+              <span class="badge">3/5/9/9 progressive branches</span>
+              <span class="badge">4-direction snake scan</span>
+              <span class="badge">FPN + H/2 skip</span>
+            </div>
+            <div class="card">
+              <h4>Optimization</h4>
+              <span class="badge">Hungarian</span>
+              <span class="badge">One-to-Many</span>
+              <span class="badge">DN Queries</span>
+              <span class="badge">CAPE + PCC + snake</span>
+            </div>
+            <div class="card">
+              <h4>Inference</h4>
+              <span class="badge">quality-aware score</span>
+              <span class="badge">crossing-aware NMS</span>
+              <span class="badge">min-pixels filter</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="p1" class="slide">
+        <div class="slide-head">Task Definition, Symbols, and Evaluation Targets</div>
+        <div class="slide-body">
+          <p>Input image \(I\in\mathbb{R}^{3\times H\times W}\), output instance set:</p>
+          <div class="eq">\[
+          \mathcal{Y}=\{(M_k,s_k)\}_{k=1}^{N}.
+          \]
+          </div>
+          <div class="def">
+            <b>Symbol Notes:</b>
+            \(M_k\in\{0,1\}^{H\times W}\) is the mask of the \(k\)-th curve instance;
+            \(s_k\in[0,1]\) is the confidence score;
+            \(N\) is the number of retained instances in the image.
+          </div>
+          <div class="grid-2">
+            <div class="card">
+              <h4>Errors to Reduce</h4>
+              <ol>
+                <li>Gap: one curve is broken into multiple segments.</li>
+                <li>Bridge: two curves are incorrectly connected.</li>
+                <li>Crossing confusion: instance assignment errors at intersections.</li>
+                <li>Grid false positive: grid lines are mistaken for curves.</li>
+              </ol>
+            </div>
+            <div class="card">
+              <h4>Metrics</h4>
+              <ol>
+                <li>Instance-level: mAP50/75/50:95, PQ.</li>
+                <li>Pixel-level: curve IoU / Dice.</li>
+                <li>Topology-level: skeleton recall.</li>
+                <li>Optional: crossing-subset statistics (false suppression rate).</li>
+              </ol>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="p2" class="slide">
+        <div class="slide-head">Data Labels and Supervision Entry Points</div>
+        <div class="slide-body">
+          <p>
+            Data is rasterized from polyline annotations into joint supervision tensors for instances + topology.
+          </p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Field</th>
+                  <th>Shape</th>
+                  <th>Definition</th>
+                  <th>Primary Use</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td><code>curve_mask</code></td><td>\((H,W)\)</td><td>Thick curve region</td><td>Base-model composed-mask supervision (not directly used by default in SOTA)</td></tr>
+                <tr><td><code>centerline_mask</code></td><td>\((H,W)\)</td><td>1 px curve skeleton</td><td>centerline/cape/snake</td></tr>
+                <tr><td><code>instance_ids</code></td><td>\((H,W)\)</td><td>Pixel instance IDs (0 = background)</td><td>Hungarian target/CAPE/boundary</td></tr>
+                <tr><td><code>direction_vectors</code></td><td>\((4,H,W)\)</td><td>Primary tangent (dx,dy) + secondary tangent at crossings</td><td>direction/snake_offset</td></tr>
+                <tr><td><code>crossing_mask</code></td><td>\((H,W)\)</td><td>Overlapping crossing region</td><td>crossing and secondary-direction supervision</td></tr>
+                <tr><td><code>boundary_mask</code></td><td>\((H,W)\)</td><td>Instance boundary region</td><td>boundary loss</td></tr>
+                <tr><td><code>grid_mask</code></td><td>\((H,W)\)</td><td>Grid/background annotation (optional)</td><td>grid loss (falls back to background when absent)</td></tr>
+                <tr><td><code>layering_target</code></td><td>\((H,W)\)</td><td>Above/below ordering relation (not annotated by default)</td><td>optional layering head</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="def">
+            <b>Current Implementation Status:</b>
+            The default dataloader does not output <code>legend_patches</code>,
+            so the legend-guided module is inactive by default; the code path remains optional and available.
+          </div>
+        </div>
+      </section>
+
+      <section id="p3" class="slide">
+        <div class="slide-head">Input Enhancement Layer (RGB/HSV/Sobel)</div>
+        <div class="slide-body">
+          <div class="eq">\[
+          x_0=\mathrm{Concat}\!\left(I,\mathrm{HSV}(I),\mathrm{Sobel}(I)\right)
+          \in\mathbb{R}^{9\times H\times W}.
+          \]
+          </div>
+          <div class="def">
+            <b>Detailed Explanation:</b><br>
+            1) \(I\in\mathbb{R}^{3\times H\times W}\) is the raw image; \(\mathrm{HSV}(I)\) decomposes color into hue/saturation/value to reduce confusion between curves with similar brightness but different colors; \(\mathrm{Sobel}(I)\) provides edge direction and magnitude through \(G_x,G_y,\|G\|\).<br>
+            2) This design directly targets two common errors: missed thin curves under low contrast, and poor separation of colored curves on gray-white backgrounds.<br>
+            3) After concatenating the three streams at the input layer, the downstream encoder can form early geometric responses without relying only on deep semantics, producing more separable line-like features sooner.
+          </div>
+          <div class="grid-3">
+            <div class="card">
+              <h4>Meaning of HSV Components</h4>
+              <p>H improves color discrimination; S suppresses gray/white background interference; V preserves luminance structure.</p>
+            </div>
+            <div class="card">
+              <h4>Meaning of Sobel Components</h4>
+              <p>\(G_x,G_y\) provide directional gradients; \(\|G\|\) adds complementary activation for weak edges.</p>
+            </div>
+            <div class="card">
+              <h4>Engineering Benefit</h4>
+              <p>When curves are thin and backgrounds are cluttered, the early feature layers form more separable responses.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="p4" class="slide">
+        <div class="slide-head">Progressive Mamba Encoder (Structure and Tensor Flow)</div>
+        <div class="slide-body">
+          <p>Default configuration: <code>encoder_dims=(64,128,256,512)</code>, <code>blocks=(2,2,4,2)</code>, <code>chunk_size=64</code>.</p>
+          <p>Each fusion block:</p>
+          <div class="eq">\[
+          x_n=\mathrm{PE}(\mathrm{GN}(x)),
+          \quad b_i=\mathcal{B}_i(x_n),
+          \quad z=\mathrm{Fuse}_{SE}(\{b_i\}),
+          \]
+          </div>
+          <div class="eq">\[
+          x' = x + \mathrm{DropPath}(\gamma_1 \odot z),\quad
+          x'' = x' + \mathrm{DropPath}\!\left(\gamma_2 \odot \mathrm{MLP}(\mathrm{GN}(x'))\right).
+          \]
+          </div>
+          <div class="def">
+            <b>Detailed Symbol Notes:</b><br>
+            1) \(\mathcal{B}_i\) denotes the \(i\)-th directional/scale branch, used to extract complementary context.<br>
+            2) \(\mathrm{PE}(\cdot)\) preserves 2D coordinate semantics before sequence modeling, preventing position ambiguity after feature reordering.<br>
+            3) \(Fuse_{SE}\) first performs global compression and then generates branch weights, suppressing redundant branches while emphasizing the most effective directions for the current image.<br>
+            4) \(\gamma_1,\gamma_2\) (LayerScale) are per-channel residual scaling parameters; they typically start near small values to limit residual perturbation early in training.<br>
+            5) DropPath randomly removes part of the residual paths during training, reducing deep co-adaptation, mitigating overfitting, and improving generalization.<br>
+            6) This module targets two issues: insufficient long-range dependency modeling for thin curves, and unstable deep training. The former is covered by multi-branch scanning, and the latter is stabilized by LayerScale and DropPath.
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Node (512 input)</th><th>Shape (B omitted)</th><th>Description</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>Enhanced input</td><td>\(9\times512\times512\)</td><td>RGB + HSV + Sobel</td></tr>
+                <tr><td>stem_layer1</td><td>\(32\times256\times256\)</td><td>H/2 feature (used for skip)</td></tr>
+                <tr><td>stage0 output \(f_1\)</td><td>\(64\times128\times128\)</td><td>H/4</td></tr>
+                <tr><td>stage1 output \(f_2\)</td><td>\(128\times64\times64\)</td><td>H/8</td></tr>
+                <tr><td>stage2 output \(f_3\)</td><td>\(256\times32\times32\)</td><td>H/16</td></tr>
+                <tr><td>stage3 output \(f_4\)</td><td>\(512\times16\times16\)</td><td>H/32</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="p5" class="slide">
+        <div class="slide-head">Snake Scan Branch (Snake H/V/D45/D135)</div>
+        <div class="slide-body">
+          <p>Offset prediction and deformable sampling:</p>
+          <div class="eq">\[
+          \Delta_d = \tanh(g_d(x_n))\cdot \alpha,\qquad
+          x_d=\mathrm{GridSample}\!\left(x_n,\ \mathcal{G}+\Pi_d(\Delta_d)\right).
+          \]
+          </div>
+          <p>Sequence scanning and restoration:</p>
+          <div class="eq">\[
+          \tilde{x}_d=\mathrm{reshape}_d(x_d),\quad
+          y_d=\mathrm{Mamba}_d(\tilde{x}_d),\quad
+          b_d=\mathrm{reshape}_d^{-1}(y_d).
+          \]
+          </div>
+          <p>Offset alignment loss:</p>
+          <div class="eq">\[
+          \mathcal{L}_{snake}=
+          \frac{1}{|D|}\sum_{d\in D}
+          \frac{\sum \mathrm{SmoothL1}(\hat{\Delta}_d,\ T_d)\odot V\odot G_d}
+               {\sum V\odot G_d},
+          \]
+          </div>
+          <div class="eq">\[
+          \hat{\Delta}_d=\frac{\Delta_d}{\max(|\Delta_d|)},\qquad
+          G_d=\mathbf{1}\!\left[\max(|\Delta_d|)\gt 10^{-4}\right],
+          \]
+          </div>
+          <div class="eq">\[
+          T_h=\frac{d_y}{\sqrt{d_x^2+d_y^2}},\quad
+          T_v=\frac{d_x}{\sqrt{d_x^2+d_y^2}},\quad
+          T_{d45}=\frac{d_y-d_x}{\sqrt{2}\sqrt{d_x^2+d_y^2}},\quad
+          T_{d135}=\frac{d_y+d_x}{\sqrt{2}\sqrt{d_x^2+d_y^2}}.
+          \]
+          </div>
+          <div class="def">
+            <b>Detailed Explanation:</b><br>
+            1) \(D=\{h,v,d45,d135\}\) denotes four scan directions covering horizontal, vertical, and the two main diagonals.<br>
+            2) \(g_d(x_n)\) predicts direction-specific offsets; \(\tanh(\cdot)\cdot\alpha\) limits offset magnitude so that sampling points do not jump too far and cause feature mismatch.<br>
+            3) \(\mathrm{GridSample}(x_n,\mathcal{G}+\Pi_d(\Delta_d))\) performs deformable sampling on continuous coordinates; \(\Pi_d\) projects offsets onto the valid geometric component of direction \(d\).<br>
+            4) \(\mathrm{reshape}_d\) rearranges 2D features into a directional sequence, \(\mathrm{Mamba}_d\) models long-range dependency on that sequence, and the result is restored back to 2D space.<br>
+            5) The implementation aligns normalized offsets \(\hat{\Delta}_d\) with signed targets \(T_d\) projected from GT tangents \(d_x,d_y\), and supervision is applied only on the valid centerline region \(V\).<br>
+            6) \(G_d\) is an offset-significance gate: when branch offsets are near zero, it prevents noise gradients from being amplified. This directly matches the `off_max>1e-4` logic in the code.
+          </div>
+        </div>
+      </section>
+
+      <section id="p6" class="slide">
+        <div class="slide-head">FPN, Grid Bias, and Pixel Topology Heads</div>
+        <div class="slide-body">
+          <div class="eq">\[
+          P_i=\mathrm{Conv}_{1\times1}(f_i),\quad
+          P_i\leftarrow P_i+\mathrm{Up}(P_{i+1}),
+          \]
+          </div>
+          <div class="eq">\[
+          F_{fpn}=\mathrm{Fuse}\!\big[P_1,\mathrm{Up}(P_2),\mathrm{Up}(P_3),\mathrm{Up}(P_4)\big],\quad
+          F= \mathrm{Up}(F_{fpn})+\mathrm{Proj}(stem_{1/2})+\lambda_g B_{grid}.
+          \]
+          </div>
+          <div class="def">
+            <b>Detailed Explanation:</b><br>
+            1) \(B_{grid}\) is a background bias map estimated by the pixel head, mainly capturing periodic background responses such as grid lines and ticks.<br>
+            2) \(\lambda_g\) is a learnable scaling factor that controls the injection strength of the background-suppression component.<br>
+            3) The additive fusion \(F+\lambda_g B_{grid}\) is used to suppress background while preserving backbone semantic magnitude, avoiding the over-suppression of weak curves that can happen with multiplicative gating.<br>
+            4) The five outputs of the pixel topology head, centerline/crossing/boundary/direction/grid, correspond to connectivity, crossings, instance separation, directional consistency, and background suppression, providing geometric priors for subsequent instance decoding.
+          </div>
+          <div class="grid-2">
+            <div class="card">
+              <h4>Pixel Head Outputs</h4>
+              <ul>
+                <li><code>centerline_logits</code></li>
+                <li><code>crossing_logits</code></li>
+                <li><code>boundary_logits</code></li>
+                <li><code>direction_vectors</code></li>
+                <li><code>grid_logits</code></li>
+              </ul>
+            </div>
+            <div class="card">
+              <h4>Functional Roles</h4>
+              <ul>
+                <li>Centerline: primary supervision for connectivity</li>
+                <li>Crossing: crossing-region recognition</li>
+                <li>Boundary: stronger instance separation</li>
+                <li>Direction: geometric directional consistency</li>
+                <li>Grid: auxiliary background suppression</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="p7" class="slide">
+        <div class="slide-head">Query Decoder (Main Instance-Segmentation Branch)</div>
+        <div class="slide-body">
+          <p>Initial queries:</p>
+          <div class="eq">\[
+          Q_0=Q_{learn}+Q_{content},\quad
+          Q_{content}=\mathrm{Pool}(F,\mathrm{AttnMap}(F)).
+          \]
+          </div>
+          <p>DN queries (training phase):</p>
+          <div class="eq">\[
+          Q_{dn}=\mathrm{MaskedAvgPool}(F,GT)+\epsilon,\ \epsilon\sim\mathcal{N}(0,\sigma^2),\quad
+          Q=\big[Q_{dn};Q_0\big].
+          \]
+          </div>
+          <p>Layer-wise update:</p>
+          <div class="eq">\[
+          \bar{M}_l=\mathrm{AlignTopK}(Q_l,M_l),\quad
+          Q_l\leftarrow Q_l + G_l\odot \bar{M}_l,
+          \]
+          </div>
+          <div class="eq">\[
+          \hat{Q}_l=\mathrm{SA}(Q_l+P_l;\mathcal{B}_{rel}),\quad
+          \tilde{Q}_l=\mathrm{CA}(\hat{Q}_l+P_l,M_l;\mathcal{B}_{lcab}),
+          \]
+          </div>
+          <div class="eq">\[
+          r_l=\sigma(h_l(Q_l)),\quad
+          Q_{l+1}=r_l\odot \tilde{Q}_l + (1-r_l)\odot Q_l.
+          \]
+          </div>
+          <div class="eq">\[
+          \hat{y}_q=\mathrm{Cls}(Q_q),\quad
+          \hat{u}_q=\mathrm{Quality}(Q_q),\quad
+          \hat{m}_q=\langle \mathrm{MaskEmbed}(Q_q),F\rangle.
+          \]
+          </div>
+          <div class="def">
+            <b>Detailed Explanation:</b><br>
+            1) \(Q_{learn}\) provides learnable instance slots for stable capacity, while \(Q_{content}\) comes from content pooling on the current image and gives sample-adaptive initialization.<br>
+            2) DN queries inject noisy GT anchors during training to reduce early matching jitter and the risk of empty-query collapse.<br>
+            3) \(\mathrm{AlignTopK}\) lets each query aggregate only the most relevant subset of memory tokens, reducing global attention noise from complex backgrounds.<br>
+            4) \(\mathcal{B}_{rel}\) is a relative-position bias between queries that improves relation modeling for crossing and parallel instances; \(\mathcal{B}_{lcab}\) is the legend-color bias and automatically becomes zero when legends are absent.<br>
+            5) \(r_l\) is a routing gate that controls the mixing ratio between new information and historical state: large \(r_l\) relies more on new evidence, while small \(r_l\) is more conservative.<br>
+            6) \(\hat{y}_q,\hat{u}_q,\hat{m}_q\) output class, quality, and mask respectively, jointly reducing the error mode where a candidate gets a high class score but a poor mask.
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Default Parameter</th><th>Value</th><th>Role</th></tr></thead>
+              <tbody>
+                <tr><td><code>num_queries</code></td><td>240</td><td>instance candidate slots</td></tr>
+                <tr><td><code>query_layers</code></td><td>6</td><td>decoder depth</td></tr>
+                <tr><td><code>query_heads</code></td><td>8</td><td>parallel attention heads</td></tr>
+                <tr><td><code>align_topk</code></td><td>96</td><td>sparse alignment scale</td></tr>
+                <tr><td><code>cross_attn_topk</code></td><td>1024</td><td>sparse KV selection for cross-attention</td></tr>
+                <tr><td><code>use_query_routing</code></td><td>True</td><td>hierarchical routing residual mixing</td></tr>
+                <tr><td><code>memory_bottleneck_ratio</code></td><td>0.5</td><td>memory compression bottleneck ratio</td></tr>
+                <tr><td><code>dn_groups</code></td><td>2</td><td>number of DN groups</td></tr>
+                <tr><td><code>dn_noise_scale</code></td><td>0.4</td><td>DN noise scale</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="p8" class="slide">
+        <div class="slide-head">Legend-Guided Module (Optional Path)</div>
+        <div class="slide-body">
+          <p>When legend patches are available, the four submodules A/LCAB/C/E are enabled:</p>
+          <ol>
+            <li><b>A</b>: LegendPatchEncoder initializes legend queries from Lab color statistics and FFT stroke-style features.</li>
+            <li><b>LCAB</b>: adds a color-similarity bias to cross-attention logits.</li>
+            <li><b>C</b>: performs bidirectional InfoNCE alignment between legend features and queries.</li>
+            <li><b>E</b>: uses an adaptive legend gate and falls back to learned queries when legends are absent.</li>
+          </ol>
+          <div class="eq">\[
+          q_i' = g_i\cdot q_i^{legend} + (1-g_i)\cdot q_i^{learned},\quad g_i\in[0,1].
+          \]
+          </div>
+          <div class="def">
+            <b>Current Default Status:</b>
+            The default data pipeline does not provide <code>legend_patches</code>, so this module is inactive in default training;
+            however, the full code path is available.
+          </div>
+        </div>
+      </section>
+
+      <section id="p9" class="slide">
+        <div class="slide-head">Matching Strategy and Loss System (16+2 Terms)</div>
+        <div class="slide-body">
+          <h4>Hungarian Main Matching</h4>
+          <div class="eq">\[
+          \mathcal{C}=
+          \lambda_{cls}\mathcal{C}_{cls}
+          +\lambda_{mask}\mathcal{C}_{mask}
+          +\lambda_{dice}\mathcal{C}_{dice}
+          +\mathbb{1}_{style}\lambda_{style}\mathcal{C}_{style}.
+          \]
+          </div>
+          <div class="def">
+            <b>Detailed Explanation:</b><br>
+            1) \(\mathcal{C}_{cls}\) measures category matching difficulty, where correct high-confidence classes incur lower cost.<br>
+            2) \(\mathcal{C}_{mask}\) measures pixel-wise binary consistency and mainly penalizes local misses and false positives.<br>
+            3) \(\mathcal{C}_{dice}\) measures overall overlap quality and mainly corrects bias caused by foreground-area imbalance.<br>
+            4) When the style head is enabled and style labels exist, \(\mathcal{C}_{style}\) participates in matching; under the default configuration the style head is disabled, so this term is inactive.<br>
+            5) Hungarian matching selects a one-to-one primary assignment with a joint cost so that supervision considers both semantic correctness and geometric fit.
+          </div>
+
+          <h4>Total Loss Groups</h4>
+          <div class="eq">\[
+          \mathcal{L}_{total}=
+          \mathcal{L}_{A}+\mathcal{L}_{B}+\mathcal{L}_{C}+\mathcal{L}_{D}+\mathcal{L}_{E}
+          +\mathcal{L}_{optional}.
+          \]
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Group</th><th>Terms</th><th>Default Weights</th><th>Role</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>A</td><td>cls, mask, dice, quality, aux, dn_mask, otm</td><td>2.0,5.0,5.0,0.6,0.5,1.0,0.5</td><td>instance classification and mask learning</td></tr>
+                <tr><td>B</td><td>centerline, crossing, boundary, direction, grid</td><td>0.8,0.6,0.6,0.3,0.3</td><td>topological structure constraints</td></tr>
+                <tr><td>C</td><td>cape, pcc</td><td>0.2,0.3</td><td>connectivity and discriminative enhancement</td></tr>
+                <tr><td>D</td><td>snake_offset</td><td>0.1</td><td>geometric consistency for snake offsets</td></tr>
+                <tr><td>E</td><td>legend_contrastive</td><td>0.2</td><td>legend-prior alignment (optional)</td></tr>
+                <tr><td>Optional</td><td>topograph, efd</td><td>default 0.0</td><td>additional topology/shape constraints</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <h4>CAPE Constraint Illustration</h4>
+          <div class="eq">\[
+          \mathcal{L}_{cape}
+          =\underbrace{\left(1-\frac{\sum P\odot S_{gt}}{\sum S_{gt}}\right)}_{\text{gap}}
+          +\underbrace{\frac{\sum P\odot B_{inst}}{\sum B_{inst}}}_{\text{bridge}}.
+          \]
+          </div>
+          <div class="def">
+            <b>Detailed Explanation:</b><br>
+            1) The gap term \(1-\frac{\sum P\odot S_{gt}}{\sum S_{gt}}\) emphasizes skeleton coverage and directly suppresses breakage probability.<br>
+            2) The bridge term \(\frac{\sum P\odot B_{inst}}{\sum B_{inst}}\) constrains activation across instance boundaries, reducing bridge errors where two curves are merged into one.<br>
+            3) CAPE is essentially a joint constraint on connectivity and separability: the former keeps each curve continuous, while the latter prevents different curves from being incorrectly linked.
+          </div>
+        </div>
+      </section>
+
+      <section id="p10" class="slide">
+        <div class="slide-head">Training Strategy and Learning Rate Schedule (Expanded View)</div>
+        <div class="slide-body">
+          <div class="grid-2">
+            <div class="card">
+              <h4>Optimizer and Parameter Groups</h4>
+              <ul>
+                <li>Optimizer: AdamW</li>
+                <li>Standard parameter-group learning rate: \(\eta_0\)</li>
+                <li>Mamba parameter-group learning rate: \(0.5\eta_0\)</li>
+                <li>Mamba parameter-group weight decay: 0.0 (standard groups use <code>weight_decay=1e-4</code>)</li>
+                <li>Defaults: <code>lr=2e-4</code>, <code>weight_decay=1e-4</code>, <code>grad_clip=1.0</code></li>
+              </ul>
+            </div>
+            <div class="card">
+              <h4>EMA Update</h4>
+              <div class="eq">\[
+              \theta_{ema}\leftarrow \mu\theta_{ema} + (1-\mu)\theta,\qquad \mu=0.999.
+              \]
+              </div>
+              <div class="def">
+                <b>Detailed Explanation:</b><br>
+                1) \(\theta\) is the current iteration parameter set, and \(\theta_{ema}\) is the historical exponential moving average.<br>
+                2) \(\mu=0.999\) makes EMA behave like a long-window low-pass filter, suppressing parameter jitter caused by batch noise.<br>
+                3) Validation and inference use EMA parameters, which typically produce smoother and more stable quality scores and mask outputs.
+              </div>
+            </div>
+          </div>
+
+          <h4>Learning Rate Schedule (Expanded)</h4>
+          <div class="eq">\[
+          \eta_t = \eta_0\cdot\frac{t}{T_w},\qquad 0\le t \lt T_w.
+          \]
+          </div>
+          <div class="eq">\[
+          \eta_t =
+          \max\!\left(
+          \eta_{min},
+          \frac{\eta_0}{2}\left[1+\cos\!\left(\pi\cdot\frac{t-T_w}{T-T_w}\right)\right]
+          \right),
+          \qquad T_w\le t\le T.
+          \]
+          </div>
+          <div class="def">
+            <b>Detailed Symbol Notes:</b><br>
+            1) \(\eta_t\): learning rate at optimization step \(t\), updated by step rather than by epoch.<br>
+            2) \(\eta_0\): base learning rate; the Mamba parameter group uses \(0.5\eta_0\) to reduce early oscillation in the sequence module.<br>
+            3) \(T_w\): number of warmup steps, satisfying \(T_w=\texttt{warmup\_epochs}\times\texttt{steps\_per\_epoch}\); the default is <code>warmup_epochs=5</code>.<br>
+            4) \(T\): total number of training steps; after warmup, cosine decay is used for smooth reduction and lower late-stage oscillation.<br>
+            5) \(\eta_{min}\): lower bound of the learning rate; in the code the standard parameter groups use \(10^{-6}\), and the Mamba groups use \(0.5\times 10^{-6}\).
+          </div>
+
+          <h4>Progressive Introduction of Complex Losses</h4>
+          <div class="eq">\[
+          w_k(e)=w_k^{*}\cdot\min\left(1,\frac{e}{E_{ramp}}\right),\qquad
+          k\in\{\mathrm{cape,pcc,snake\_offset}\}.
+          \]
+          </div>
+          <div class="def">
+            <b>Detailed Explanation:</b><br>
+            1) \(w_k(e)\) is the weight of the \(k\)-th complex loss at epoch \(e\), and \(w_k^{*}\) is its target weight.<br>
+            2) \(E_{ramp}=10\) means the first 10 epochs linearly ramp the weight up, after which the loss stays at full weight.<br>
+            3) This progressive strategy lets the model first learn the primary convergent tasks (classification and masks), and then gradually adds topology and contrastive constraints to reduce instability caused by multi-loss competition.
+          </div>
+        </div>
+      </section>
+
+      <section id="p11" class="slide">
+        <div class="slide-head">Inference Post-processing and Crossing Preservation</div>
+        <div class="slide-body">
+          <p>Composite score:</p>
+          <div class="eq">\[
+          s_q=\mathrm{softmax}(\hat{y}_q)_{curve}\cdot \sigma(\hat{u}_q)^{\beta}.
+          \]
+          </div>
+          <div class="def">
+            \(\hat{y}_q\) denotes query classification logits;
+            \(\hat{u}_q\) denotes the quality score;
+            \(\beta=\texttt{quality\_power}\) (default 1.0).
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Parameter</th><th>Default</th><th>Meaning</th></tr></thead>
+              <tbody>
+                <tr><td><code>score_thresh</code></td><td>0.35</td><td>joint threshold on classification and quality</td></tr>
+                <tr><td><code>mask_thresh</code></td><td>0.5</td><td>mask binarization threshold</td></tr>
+                <tr><td><code>top_k</code></td><td>120</td><td>maximum number of candidates</td></tr>
+                <tr><td><code>min_pixels</code></td><td>24</td><td>remove small fragments</td></tr>
+                <tr><td><code>nms_iou</code></td><td>0.7</td><td>base NMS threshold</td></tr>
+                <tr><td><code>crossing_iou_override</code></td><td>0.92</td><td>relaxed threshold for crossing scenarios</td></tr>
+                <tr><td><code>crossing_conf_thresh</code></td><td>0.4</td><td>confidence threshold for crossing evidence</td></tr>
+                <tr><td><code>crossing_min_overlap</code></td><td>5</td><td>minimum overlap pixels to trigger crossing judgment</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>crossing-aware rules:</p>
+          <div class="eq">\[
+          n_{ov}=|\Omega_{ov}(m_i,m_j)|,\qquad
+          \overline{C}_{overlap}=\frac{1}{n_{ov}}\sum_{p\in\Omega_{ov}}C_{cross}(p).
+          \]
+          </div>
+          <div class="eq">\[
+          \mathrm{Decision}(m_i,m_j)=
+          \begin{cases}
+          \text{keep both}, & \mathrm{IoU}(m_i,m_j)\le t_{nms},\\
+          \text{keep both}, & \mathrm{IoU}(m_i,m_j)\gt t_{nms}\ \land\ n_{ov}\gt 4\ \land\ \overline{C}_{overlap}\gt 0.4\ \land\ \mathrm{IoU}(m_i,m_j)\lt t_{override},\\
+          \text{suppress}, & \text{otherwise}.
+          \end{cases}
+          \]
+          </div>
+          <div class="def">
+            <b>Detailed Explanation:</b><br>
+            1) \(\mathrm{IoU}(m_i,m_j)\) is the intersection-over-union of candidate masks, and \(t_{nms}\) is the regular suppression threshold (default 0.7).<br>
+            2) \(n_{ov}\) is the number of pixels in the overlap region; the mean crossing confidence \(\overline{C}_{overlap}\) is computed only when \(n_{ov}\gt 4\).<br>
+            3) When IoU exceeds the base threshold and crossing evidence is insufficient (overlap too small or \(\overline{C}_{overlap}\le 0.4\)), the pair is treated as duplicate candidates and suppressed.<br>
+            4) When IoU exceeds the base threshold and crossing evidence is sufficient, both instances are kept if IoU is still below the relaxed threshold \(t_{override}\) (default 0.92).<br>
+            5) This logic matches `_should_suppress` in the code: it preserves deduplication ability while improving recall in crossing scenarios.
+          </div>
+        </div>
+      </section>
+
+      <section id="p12" class="slide">
+        <div class="slide-head">Module Origins, Problem Mapping, and This Design</div>
+        <div class="slide-body">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Problem</th><th>Module</th><th>Reference Source</th><th>This Implementation</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>Thin-curve long-range connectivity</td><td>Progressive Mamba Encoder</td><td>Mamba-3</td><td>2D multi-direction scanning + progressive branch scheduling</td></tr>
+                <tr><td>Insufficient coverage of curved trajectories</td><td>Snake H/V/D45/D135</td><td>SCSegamba</td><td>offset learning + offset alignment loss</td></tr>
+                <tr><td>Crossing-instance confusion</td><td>Query Decoder + Relation Bias + PCC</td><td>Mask2Former / Relation-DETR / CAVIS</td><td>coupled instance-relation and discriminative learning</td></tr>
+                <tr><td>Grid-background false positives</td><td>Grid Bias + Grid Loss</td><td>background suppression idea</td><td>additive bias for suppressing periodic background</td></tr>
+                <tr><td>Training stability</td><td>BATO + O2M + DN + EMA + ramp</td><td>DI-MaskDINO / DETR family</td><td>multi-strategy coordination for stable convergence</td></tr>
+                <tr><td>Use of legend priors</td><td>A/LCAB/C/E (optional)</td><td>color bias and contrastive alignment</td><td>enhance when legends exist, fall back when absent</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="p13" class="slide">
+        <div class="slide-head">Default Configuration Audit</div>
+        <div class="slide-body">
+          <ul>
+            <li>Default model: <code>--model sota</code>, i.e. <code>CurveSOTAQueryNet</code>.</li>
+            <li>Default training hyperparameters: <code>img_size=512</code>, <code>batch_size=4</code>, <code>epochs=100</code>, <code>lr=2e-4</code>.</li>
+            <li>Default backbone: <code>dims=64/128/256/512</code>, <code>blocks=2/2/4/2</code>, <code>chunk_size=64</code>.</li>
+            <li>Default decoder: <code>num_queries=240</code>, <code>layers=6</code>, <code>heads=8</code>, <code>align_topk=96</code>, <code>cross_attn_topk=1024</code>, <code>use_query_routing=True</code>, <code>memory_bottleneck_ratio=0.5</code>.</li>
+            <li>Default losses: 16 primary loss terms + 2 optional terms (default weight 0).</li>
+            <li>Default scheduling: <code>warmup_epochs=5</code>, <code>ema_decay=0.999</code>, <code>loss_ramp_epochs=10</code>.</li>
+            <li>Default inference thresholds: <code>score=0.35</code>, <code>mask=0.5</code>, <code>top_k=120</code>, <code>min_pixels=24</code>, <code>nms=0.7</code>, <code>override=0.92</code>, <code>crossing_conf=0.4</code>, <code>min_overlap=5</code>, <code>quality_power=1.0</code>.</li>
+            <li>Legend path: supported in code, inactive in the default data flow.</li>
+          </ul>
+          <div class="raw">The current webpage fully expands the architecture, formulas, symbols, tensor flow, loss grouping, training schedule, inference rules, and module-source mapping, and can be used directly for presentations.</div>
+        </div>
+      </section>
+
+      <section id="p14" class="slide">
+        <div class="slide-head">Terminology Reference (Terms, Abbreviations, and Roles)</div>
+        <div class="slide-body">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Term / Abbrev.</th><th>Full Name</th><th>Definition in This Model</th><th>Problem Addressed</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>SSM / Mamba</td><td>State Space Model</td><td>Reorders 2D features into sequences and performs state-space recurrence, excelling at long-range dependency modeling</td><td>insufficient long-range connectivity for thin curves</td></tr>
+                <tr><td>PE</td><td>2D Positional Encoding</td><td>Injects spatial position information before scanning to avoid losing coordinate semantics after sequence reordering</td><td>position ambiguity</td></tr>
+                <tr><td>SE Fusion</td><td>Squeeze-Excitation Branch Fusion</td><td>Learns weights for different branches and fuses them, reducing interference from ineffective directional branches</td><td>multi-branch information redundancy</td></tr>
+                <tr><td>LayerScale</td><td>Per-channel Residual Scaling</td><td>Multiplies residual branches by learnable scaling parameters to stabilize deep training</td><td>unstable deep training</td></tr>
+                <tr><td>DropPath</td><td>Stochastic Depth</td><td>Randomly drops residual branches during training to improve generalization</td><td>overfitting</td></tr>
+                <tr><td>Snake Scan</td><td>Deformable Directional Scan</td><td>Predicts offsets, performs deformable sampling, and then scans along H/V/D45/D135 directions</td><td>curve bending and direction change</td></tr>
+                <tr><td>\(\Pi_d\)</td><td>Directional Projection</td><td>Projects offsets or tangents onto the directional component associated with direction \(d\)</td><td>mismatch between offsets and geometry</td></tr>
+                <tr><td>Stem Skip</td><td>High-resolution Skip Connection</td><td>Feeds H/2 features back into the decoder to recover fine edge detail</td><td>loss of high-resolution details</td></tr>
+                <tr><td>Grid Bias</td><td>Additive Grid Suppression Bias</td><td>Estimates a background bias from multi-scale features and adds it into the fused feature map</td><td>grid-background false positives</td></tr>
+                <tr><td>Memory Tokens</td><td>Flattened Multi-scale Features</td><td>Compressed and flattened features from f4/f3/f2 used as key-value sequences in cross-attention</td><td>cross-scale instance retrieval</td></tr>
+                <tr><td>BATO</td><td>Balance-Aware Token Optimization</td><td>Reweights memory tokens in the first decoder layer to reduce imbalance between classification and mask learning</td><td>instability in early training</td></tr>
+                <tr><td>Top-k Align</td><td>Query-Memory Top-k Alignment</td><td>Each query aggregates only the most relevant memory subset to reduce noisy attention</td><td>complex background interference</td></tr>
+                <tr><td>Relation Bias</td><td>Query Position Relation Bias</td><td>Builds a self-attention bias from the relative positions of query reference points</td><td>weak relation modeling for crossing/parallel instances</td></tr>
+                <tr><td>DN Queries</td><td>Denoising Queries</td><td>Generated from GT-region pooling with added noise to provide stable supervision anchors</td><td>early convergence jitter</td></tr>
+                <tr><td>O2M</td><td>One-to-Many Matching</td><td>Assigns multiple queries to each GT instance as auxiliary positives</td><td>sparse supervision</td></tr>
+                <tr><td>CAPE</td><td>Connectivity-aware Loss</td><td>Composed of gap and bridge terms to jointly enforce connectivity and separation</td><td>breakage and bridging</td></tr>
+                <tr><td>PCC</td><td>Query-level Prototypical Contrastive</td><td>Pulls queries from the same instance closer and pushes queries from different instances apart</td><td>instance confusion at crossings</td></tr>
+                <tr><td>LCAB</td><td>Legend-Conditioned Attention Bias</td><td>Builds a cross-attention bias from the similarity between legend colors and image colors</td><td>difficulty distinguishing near-color curves with similar brightness</td></tr>
+                <tr><td>Legend Gate (E)</td><td>Legend-Absent Adaptive Gate</td><td>Fuses legend priors when available and automatically falls back to learned queries when absent</td><td>compatibility when legends are missing</td></tr>
+                <tr><td>Quality Score</td><td>Mask Quality Head</td><td>Estimates mask reliability and multiplies it with class probability to obtain the final score</td><td>false retention of low-quality high-score candidates</td></tr>
+                <tr><td>Crossing-aware NMS</td><td>Crossing-aware Suppression</td><td>Relaxes the IoU suppression threshold when crossing confidence is high, preserving both instances at crossings</td><td>false suppression in crossing regions</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="def">
+            <b>Supplementary Terminology Notes (Unified Definitions):</b><br>
+            1) "Connectivity" means continuous reachability along the curve direction within the same instance; "separability" means different instances remain distinguishable in crossing or adjacent regions.<br>
+            2) "Geometric consistency" is mainly constrained jointly by direction/snake/CAPE: the direction field provides local orientation, snake constrains sampling offsets, and CAPE constrains global connectivity and separation.<br>
+            3) "Instance discrimination" is jointly handled by query classification, the quality branch, and the PCC contrastive term, corresponding to category, reliability, and cross-instance separation.<br>
+            4) "Background suppression" is jointly handled by the grid branch and post-processing thresholds: the former suppresses periodic background in feature space, and the latter removes low-quality candidates at the instance level.<br>
+            5) Every module in the terminology table maps to a specific error pattern, which makes it easier to align method design with error analysis.
+          </div>
+        </div>
+      </section>
+    </article>
+  </div>
+
+  <script>
+    window.MathJax = {
+      tex: {
+        inlineMath: [['\\(', '\\)'], ['$', '$']],
+        displayMath: [['\\[', '\\]']]
+      },
+      svg: { fontCache: 'global' }
+    };
+  </script>
+  <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+</body>
+</html>
