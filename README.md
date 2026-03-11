@@ -1,16 +1,28 @@
 <div align="center">
   <h1>Mamba-3 Chart Curve Instance Segmentation</h1>
-  <p>Pure PyTorch chart curve instance segmentation built on a Mamba-3 spatial encoder.</p>
+  <p><strong>Query-based chart curve instance segmentation built on a Mamba-3 spatial encoder.</strong></p>
+  <p>Pure PyTorch training and inference for thin-curve extraction, crossings, topology-aware supervision, and static web publishing.</p>
   <p>
-    <a href="#installation"><img src="https://img.shields.io/badge/PyTorch-2.x-EE4C2C?style=flat-square&logo=pytorch&logoColor=white" alt="PyTorch"></a>
-    <a href="#model-variants"><img src="https://img.shields.io/badge/default-CurveSOTAQueryNet-0969da?style=flat-square" alt="Default Model"></a>
-    <a href="index.html"><img src="https://img.shields.io/badge/docs-index.html-1f883d?style=flat-square" alt="Docs"></a>
-    <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-8250df?style=flat-square" alt="License"></a>
+    <a href="#installation"><img src="https://img.shields.io/badge/PyTorch-2.x-EE4C2C?style=for-the-badge&logo=pytorch&logoColor=white" alt="PyTorch"></a>
+    <a href="#model-variants"><img src="https://img.shields.io/badge/default-CurveSOTAQueryNet-0969da?style=for-the-badge" alt="Default Model"></a>
+    <a href="#default-configuration"><img src="https://img.shields.io/badge/input-RGB%20%2B%20HSV%20%2B%20Sobel-1f6feb?style=for-the-badge" alt="Input Stack"></a>
+    <a href="#default-configuration"><img src="https://img.shields.io/badge/inference-crossing--aware%20NMS-1f883d?style=for-the-badge" alt="Inference"></a>
+    <a href="index.html"><img src="https://img.shields.io/badge/docs-index.html-8250df?style=for-the-badge" alt="Docs"></a>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-57606a?style=for-the-badge" alt="License"></a>
+  </p>
+  <p>
+    <a href="#overview"><img src="https://img.shields.io/badge/Overview-open-24292f?style=flat-square" alt="Overview"></a>
+    <a href="#architecture"><img src="https://img.shields.io/badge/Architecture-open-24292f?style=flat-square" alt="Architecture"></a>
+    <a href="#quick-start"><img src="https://img.shields.io/badge/Quick_Start-open-24292f?style=flat-square" alt="Quick Start"></a>
+    <a href="#default-configuration"><img src="https://img.shields.io/badge/Defaults-open-24292f?style=flat-square" alt="Defaults"></a>
+    <a href="#documentation-page"><img src="https://img.shields.io/badge/Static_Docs-open-24292f?style=flat-square" alt="Static Docs"></a>
   </p>
 </div>
 
 > [!IMPORTANT]
 > This README is aligned with the current local implementation. The default training entry point is `CurveSOTAQueryNet` via `train.py --model sota`.
+>
+> The segmentation stack is the primary project in this repository. The standalone `mamba3.py` reference remains available as a compact implementation of the sequence-model core.
 
 ## Overview
 
@@ -19,58 +31,79 @@ This repository combines two related parts:
 - A chart curve instance segmentation system with a Mamba-3 spatial encoder
 - A minimal `mamba3.py` sequence-model implementation used by the spatial backbone and kept as a standalone reference
 
-The segmentation side is the primary project in the current codebase. It includes:
+The segmentation side is the primary project in the current codebase. It includes `CurveInstanceMamba3Net`, the default `CurveSOTAQueryNet`, and an English `index.html` method page that can be published directly as a static site.
 
-- `CurveInstanceMamba3Net`: a base model with composed-mask and embedding outputs
-- `CurveSOTAQueryNet`: the default query-based model for instance segmentation
-- `index.html`: an English method page that can be published directly as a static site
-
-## At a Glance
+## Project Snapshot
 
 <table>
   <tr>
-    <td valign="top" width="25%">
-      <strong>Default Training Path</strong><br>
+    <td valign="top" width="33%">
+      <strong>Default Entry</strong><br>
       <code>train.py --model sota</code><br><br>
-      Query-based instance segmentation with topology-aware supervision.
+      Query-based instance segmentation with Hungarian matching, one-to-many supervision, and denoising queries.
     </td>
-    <td valign="top" width="25%">
+    <td valign="top" width="33%">
       <strong>Backbone</strong><br>
       <code>3 / 5 / 9 / 9</code> progressive branches<br><br>
-      Mamba-based spatial encoder with snake scans and grid suppression.
+      Mamba spatial encoder with local, directional, reverse, and snake scan paths over <code>H / V / D45 / D135</code>.
     </td>
-    <td valign="top" width="25%">
+    <td valign="top" width="33%">
+      <strong>Decoder</strong><br>
+      Query decoder + topology heads<br><br>
+      FPN fusion, <code>H/2</code> stem skip, and additive grid suppression feed parallel instance and topology prediction heads.
+    </td>
+  </tr>
+  <tr>
+    <td valign="top" width="33%">
+      <strong>Supervision</strong><br>
+      <code>16</code> primary losses in <code>5</code> groups<br><br>
+      Instance, topology, consistency, snake-offset, and optional legend-guided supervision are organized into one criterion.
+    </td>
+    <td valign="top" width="33%">
       <strong>Inference</strong><br>
-      Quality-aware score + crossing-aware NMS<br><br>
-      Designed to preserve crossings while removing duplicates and fragments.
+      Quality-aware scoring + crossing-aware NMS<br><br>
+      The default post-process path preserves genuine crossings while removing duplicates and small fragments.
     </td>
-    <td valign="top" width="25%">
-      <strong>Docs</strong><br>
+    <td valign="top" width="33%">
+      <strong>Publishing</strong><br>
       <a href="index.html"><code>index.html</code></a><br><br>
-      English method page ready for static hosting or GitHub Pages.
+      The repository already contains an English static method page suitable for GitHub Pages, Netlify, or Cloudflare Pages.
     </td>
   </tr>
 </table>
 
-## Contents
+## Quick Navigation
 
-- [Overview](#overview)
-- [At a Glance](#at-a-glance)
-- [Highlights](#highlights)
-- [Architecture](#architecture)
-- [Model Variants](#model-variants)
-- [Installation](#installation)
-- [Quick Start](#quick-start)
-- [Data Format](#data-format)
-- [Default Configuration](#default-configuration)
-- [Evaluation](#evaluation)
-- [Loss System](#loss-system)
-- [Optional Modules and Caveats](#optional-modules-and-caveats)
-- [Tests](#tests)
-- [Repository Layout](#repository-layout)
-- [Documentation Page](#documentation-page)
-- [Credits](#credits)
-- [License](#license)
+<table>
+  <tr>
+    <td valign="top" width="33%">
+      <a href="#architecture"><strong>Architecture</strong></a><br>
+      Backbone, decoder, topology heads, and the train/infer split.
+    </td>
+    <td valign="top" width="33%">
+      <a href="#quick-start"><strong>Quick Start</strong></a><br>
+      Training, resume, ablation, profiling, and visualization commands.
+    </td>
+    <td valign="top" width="33%">
+      <a href="#default-configuration"><strong>Default Configuration</strong></a><br>
+      Training defaults, decoder settings, and inference thresholds.
+    </td>
+  </tr>
+  <tr>
+    <td valign="top" width="33%">
+      <a href="#data-format"><strong>Data Format</strong></a><br>
+      Supported JSON schemas and generated supervision tensors.
+    </td>
+    <td valign="top" width="33%">
+      <a href="#loss-system"><strong>Loss System</strong></a><br>
+      The current 16-term default objective and optional extras.
+    </td>
+    <td valign="top" width="33%">
+      <a href="#documentation-page"><strong>Documentation Page</strong></a><br>
+      Static publishing notes for the bundled English method page.
+    </td>
+  </tr>
+</table>
 
 ## Highlights
 
@@ -86,6 +119,33 @@ The segmentation side is the primary project in the current codebase. It include
 | Legend path | Implemented in code, but inactive by default because the standard dataset pipeline does not emit `legend_patches`. | Keeps the repository extensible without overstating default behavior. |
 
 ## Architecture
+
+<table>
+  <tr>
+    <td valign="top" width="25%">
+      <strong>01. Input Stack</strong><br>
+      RGB + HSV + Sobel enhancement<br><br>
+      The default SOTA path augments raw RGB before the first convolutional stem.
+    </td>
+    <td valign="top" width="25%">
+      <strong>02. Progressive Encoder</strong><br>
+      <code>H/4 -> H/32</code> with <code>3 / 5 / 9 / 9</code> branches<br><br>
+      Spatial Mamba blocks mix local depthwise paths with directional and snake scans for curved structures.
+    </td>
+    <td valign="top" width="25%">
+      <strong>03. Dual Prediction Heads</strong><br>
+      Query decoder || topology heads<br><br>
+      Fused features feed instance-level queries and dense topology supervision in parallel.
+    </td>
+    <td valign="top" width="25%">
+      <strong>04. Split Endpoints</strong><br>
+      Train branch || infer branch<br><br>
+      Training aggregates matching and multi-group losses; inference keeps the query path dominant and uses crossing logits for post-processing.
+    </td>
+  </tr>
+</table>
+
+### Reference Flow
 
 ```text
 Input image
