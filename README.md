@@ -9,6 +9,7 @@
   </p>
 </div>
 
+> [!IMPORTANT]
 > This README is aligned with the current local implementation. The default training entry point is `CurveSOTAQueryNet` via `train.py --model sota`.
 
 ## Overview
@@ -24,9 +25,37 @@ The segmentation side is the primary project in the current codebase. It include
 - `CurveSOTAQueryNet`: the default query-based model for instance segmentation
 - `index.html`: an English method page that can be published directly as a static site
 
+## At a Glance
+
+<table>
+  <tr>
+    <td valign="top" width="25%">
+      <strong>Default Training Path</strong><br>
+      <code>train.py --model sota</code><br><br>
+      Query-based instance segmentation with topology-aware supervision.
+    </td>
+    <td valign="top" width="25%">
+      <strong>Backbone</strong><br>
+      <code>3 / 5 / 9 / 9</code> progressive branches<br><br>
+      Mamba-based spatial encoder with snake scans and grid suppression.
+    </td>
+    <td valign="top" width="25%">
+      <strong>Inference</strong><br>
+      Quality-aware score + crossing-aware NMS<br><br>
+      Designed to preserve crossings while removing duplicates and fragments.
+    </td>
+    <td valign="top" width="25%">
+      <strong>Docs</strong><br>
+      <a href="index.html"><code>index.html</code></a><br><br>
+      English method page ready for static hosting or GitHub Pages.
+    </td>
+  </tr>
+</table>
+
 ## Contents
 
 - [Overview](#overview)
+- [At a Glance](#at-a-glance)
 - [Highlights](#highlights)
 - [Architecture](#architecture)
 - [Model Variants](#model-variants)
@@ -45,15 +74,16 @@ The segmentation side is the primary project in the current codebase. It include
 
 ## Highlights
 
-- RGB + HSV + Sobel input enhancement is enabled by default in the SOTA model.
-- The spatial encoder uses progressive branch schedules of `3 / 5 / 9 / 9` from `H/4` to `H/32`.
-- Active branch types include local depthwise convolution, row/column Mamba scans, reverse row/column scans, and snake scans in `H / V / D45 / D135`.
-- The decoder uses FPN fusion, an `H/2` stem skip, and an additive grid-suppression bias.
-- The SOTA model combines a query decoder with pixel topology heads for `centerline`, `crossing`, `boundary`, `direction`, and `grid`.
-- Training uses Hungarian matching, one-to-many matching, denoising queries, EMA, and loss-ramp scheduling.
-- The current loss system has 16 primary terms across 5 groups, plus `topograph` and `efd` as default-disabled optional terms.
-- Inference uses quality-aware scoring, crossing-aware NMS, and fragment filtering.
-- The legend-guided path is implemented, but the default dataset pipeline does not emit `legend_patches`, so it is inactive by default.
+| Area | Current implementation | Why it matters |
+| --- | --- | --- |
+| Input | RGB + HSV + Sobel enhancement is enabled by default in the SOTA model. | Improves thin-curve separation under low contrast and cluttered backgrounds. |
+| Backbone | Progressive branch schedules `3 / 5 / 9 / 9` over `H/4 -> H/32`. | Balances high-resolution detail with stronger long-range structure modeling. |
+| Branch types | Local depthwise convolution, row/column Mamba, reverse row/column scans, and snake scans in `H / V / D45 / D135`. | Covers both directional continuity and curved geometry. |
+| Decoder | FPN fusion, `H/2` stem skip, additive grid-suppression bias, query decoder, and topology heads. | Preserves details while separating instance decoding from topology supervision. |
+| Training | Hungarian matching, one-to-many matching, denoising queries, EMA, and loss-ramp scheduling. | Improves optimization stability and supervision density. |
+| Losses | 16 primary terms across 5 groups, plus `topograph` and `efd` as default-disabled optional terms. | Keeps the default path strong while leaving room for controlled experiments. |
+| Inference | Quality-aware scoring, crossing-aware NMS, and fragment filtering. | Improves crossing recall without letting duplicates dominate the output. |
+| Legend path | Implemented in code, but inactive by default because the standard dataset pipeline does not emit `legend_patches`. | Keeps the repository extensible without overstating default behavior. |
 
 ## Architecture
 
@@ -134,7 +164,10 @@ python visualize_offsets.py --checkpoint checkpoints/best.pth --image test.png -
 python dataset.py data/train
 ```
 
-### Minimal Mamba-3 Reference
+<details>
+<summary><strong>Minimal Mamba-3 Reference</strong></summary>
+
+<br>
 
 The repository also keeps the original minimal sequence-model reference:
 
@@ -142,6 +175,8 @@ The repository also keeps the original minimal sequence-model reference:
 python demo.py
 python mamba3.py
 ```
+
+</details>
 
 ## Data Format
 
@@ -267,7 +302,10 @@ This means the current implementation uses 16 primary loss terms, with 2 extra o
 
 ## Tests
 
-Run the segmentation-side tests with:
+<details>
+<summary><strong>Run segmentation-side tests</strong></summary>
+
+<br>
 
 ```bash
 pytest tests/test_curve_model.py
@@ -276,13 +314,20 @@ pytest tests/test_curve_eval.py
 pytest tests/test_legend.py
 ```
 
-The repository also keeps the original Mamba-3 minimal reference tests:
+</details>
+
+<details>
+<summary><strong>Run minimal Mamba-3 reference tests</strong></summary>
+
+<br>
 
 ```bash
 pytest tests/test_mimo.py
 pytest tests/test_parity.py
 pytest tests/test_text.py
 ```
+
+</details>
 
 ## Repository Layout
 
@@ -302,7 +347,8 @@ pytest tests/test_text.py
 
 ## Documentation Page
 
-`index.html` is ready to be published as a static webpage through GitHub Pages, Netlify, or Cloudflare Pages.
+> [!TIP]
+> `index.html` is ready to be published as a static webpage through GitHub Pages, Netlify, or Cloudflare Pages.
 
 ## Credits
 
