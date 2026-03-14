@@ -415,7 +415,7 @@
         <span class="repo-badge"><strong>Doc status</strong> code-aligned</span>
       </div>
       <div class="meta">
-        Verified against the local implementation on 2026-03-11. This page is styled as a repository README while preserving the full method walkthrough and parameter audit.
+        Verified against the local implementation on 2026-03-14. This page is styled as a repository README while preserving the full method walkthrough and parameter audit.
       </div>
 
       <nav class="toc">
@@ -430,7 +430,7 @@
         <a href="#p8">Legend-Guided Module</a>
         <a href="#p9">Matching Strategy and Loss System</a>
         <a href="#p10">Training Strategy and Learning Rate Schedule</a>
-        <a href="#p11">Inference Post-processing and Crossing Preservation</a>
+        <a href="#p11">Inference Post-processing, Recovery, and Crossing Preservation</a>
         <a href="#p12">Module Origins, Problem Mapping, and This Design</a>
         <a href="#p13">Default Configuration Audit</a>
         <a href="#p14">Terminology Reference</a>
@@ -440,7 +440,7 @@
         <div class="slide-head">Overall Architecture</div>
         <div class="slide-body">
           <div class="summary">
-            The model consists of four stages: <b>input enhancement</b>, <b>Progressive Mamba spatial encoding</b>, <b>Query instance decoding + pixel topology branch</b>, and <b>crossing-aware post-processing</b>.
+            The model consists of four stages: <b>input enhancement</b>, <b>Progressive Mamba spatial encoding</b>, <b>Query instance decoding + pixel topology branch</b>, and <b>centerline-assisted crossing/boundary-aware post-processing</b>.
             The design targets three core failure modes: thin-line breaks, crossing confusion, and grid interference.
           </div>
           <div class="flow-wrap">
@@ -473,7 +473,7 @@
                 <rect x="52" y="90" width="180" height="82" rx="13"></rect>
                 <text x="142" y="118" text-anchor="middle">
                   <tspan x="142" dy="0">Input Image</tspan>
-                  <tspan class="sub" x="142" dy="22">I ∈ R^(3×H×W)</tspan>
+                  <tspan class="sub" x="142" dy="22">I in R^(3xHxW)</tspan>
                 </text>
               </g>
               <g class="flow-step"><circle cx="66" cy="92" r="12"></circle><text x="66" y="92">1</text></g>
@@ -529,7 +529,7 @@
                 <text x="1520" y="112" text-anchor="middle">
                   <tspan x="1520" dy="0">Training Path</tspan>
                   <tspan class="sub" x="1520" dy="20">Hungarian + O2M + DN</tspan>
-                  <tspan class="sub" x="1520" dy="18">16+2 Loss + AdamW / EMA / LR</tspan>
+                  <tspan class="sub" x="1520" dy="18">chart-core losses + AdamW / EMA / LR</tspan>
                 </text>
               </g>
               <g class="flow-step"><circle cx="1354" cy="88" r="12"></circle><text x="1354" y="88">7</text></g>
@@ -539,7 +539,7 @@
                 <text x="1520" y="258" text-anchor="middle">
                   <tspan x="1520" dy="0">Inference Path</tspan>
                   <tspan class="sub" x="1520" dy="20">query score / quality / mask</tspan>
-                  <tspan class="sub" x="1520" dy="18">+ crossing map -> NMS + filtering</tspan>
+                  <tspan class="sub" x="1520" dy="18">+ centerline / boundary / crossing refinement</tspan>
                 </text>
               </g>
               <g class="flow-step"><circle cx="1354" cy="234" r="12"></circle><text x="1354" y="234">8</text></g>
@@ -575,8 +575,8 @@
               <line class="flow-line" x1="1318" y1="147" x2="1340" y2="147"></line>
               <line class="flow-line" x1="1318" y1="266" x2="1340" y2="266"></line>
               <text class="flow-note" x="1190" y="348" text-anchor="middle">
-                <tspan x="1190" dy="0">Only crossing directly enters</tspan>
-                <tspan x="1190" dy="15">post-processing</tspan>
+                <tspan x="1190" dy="0">Centerline, boundary, and crossing</tspan>
+                <tspan x="1190" dy="15">all assist post-processing</tspan>
               </text>
               <line class="flow-line" x1="1520" y1="336" x2="1520" y2="398"></line>
 
@@ -606,18 +606,18 @@
           \]
           </div>
           <div class="eq">\[
-          \text{Train branch: }\text{Hungarian + O2M + DN + 16{+}2 Loss + AdamW/EMA/LR},
+          \text{Train branch: }\text{Hungarian + O2M + DN + chart-core losses + AdamW/EMA/LR},
           \]
           </div>
           <div class="eq">\[
-          \text{Infer branch (postprocess\_curve\_instances): }\text{query logits/quality/masks + crossing map}.
+          \text{Infer branch (postprocess\_curve\_instances): }\text{query logits/quality/masks + centerline/boundary/crossing maps}.
           \]
           </div>
           <div class="grid-3">
             <div class="card">
               <h4>Architecture</h4>
-              <span class="badge">3/5/9/9 progressive branches</span>
-              <span class="badge">4-direction snake scan</span>
+              <span class="badge">3/5/7/7 chart branches</span>
+              <span class="badge">H/V snake default</span>
               <span class="badge">FPN + H/2 skip</span>
             </div>
             <div class="card">
@@ -625,13 +625,13 @@
               <span class="badge">Hungarian</span>
               <span class="badge">One-to-Many</span>
               <span class="badge">DN Queries</span>
-              <span class="badge">CAPE + PCC + snake</span>
+              <span class="badge">CAPE + crossing + snake</span>
             </div>
             <div class="card">
               <h4>Inference</h4>
               <span class="badge">quality-aware score</span>
-              <span class="badge">crossing-aware NMS</span>
-              <span class="badge">min-pixels filter</span>
+              <span class="badge">centerline recovery</span>
+              <span class="badge">crossing / boundary-aware NMS</span>
             </div>
           </div>
         </div>
@@ -667,9 +667,10 @@
               <h4>Metrics</h4>
               <ol>
                 <li>Final extraction: curve IoU / Dice, curve precision / recall, curve clDice.</li>
-                <li>Topology coverage: skeleton recall over the final extracted curve union.</li>
+                <li>Topology diagnostics: skeleton recall, curve connectivity, fragmentation, and endpoint error over the final extracted curve union.</li>
+                <li>Crossing diagnostics: crossing IoU / precision / recall / F1.</li>
                 <li>Auxiliary dense-head diagnostics: centerline IoU / Dice, centerline precision / recall.</li>
-                <li>SOTA-only instance separation: mAP50/75/50:95, PQ, and optional COCO AP, all computed after post-processing rather than on raw queries.</li>
+                <li>SOTA-only instance separation: mAP50/75/50:95, PQ, split rate, merge rate, instance-count error, and optional COCO AP, all computed after post-processing rather than on raw queries.</li>
               </ol>
             </div>
           </div>
@@ -706,8 +707,8 @@
           </div>
           <div class="def">
             <b>Current Implementation Status:</b>
-            The default dataloader does not output <code>legend_patches</code>,
-            so the legend-guided module is inactive by default; the code path remains optional and available.
+            The stock <code>dataset.py</code> pipeline does not emit <code>legend_patches</code> automatically.
+            The training and evaluation code can consume them, and the chart preset will activate the legend-guided path whenever they are supplied.
           </div>
         </div>
       </section>
@@ -746,7 +747,7 @@
       <section id="p4" class="slide">
         <div class="slide-head">Progressive Mamba Encoder (Structure and Tensor Flow)</div>
         <div class="slide-body">
-          <p>Default configuration: <code>encoder_dims=(64,128,256,512)</code>, <code>blocks=(2,2,4,2)</code>, <code>chunk_size=64</code>.</p>
+          <p>Default chart preset: <code>encoder_dims=(64,128,224,384) | blocks=(2,2,3,2) | chunk_size=64</code>; the legacy preset restores <code>(64,128,256,512) | (2,2,4,2)</code>.</p>
           <p>Each fusion block:</p>
           <div class="eq">\[
           x_n=\mathrm{PE}(\mathrm{GN}(x)),
@@ -778,8 +779,8 @@
                 <tr><td>stem_layer1</td><td>\(32\times256\times256\)</td><td>H/2 feature (used for skip)</td></tr>
                 <tr><td>stage0 output \(f_1\)</td><td>\(64\times128\times128\)</td><td>H/4</td></tr>
                 <tr><td>stage1 output \(f_2\)</td><td>\(128\times64\times64\)</td><td>H/8</td></tr>
-                <tr><td>stage2 output \(f_3\)</td><td>\(256\times32\times32\)</td><td>H/16</td></tr>
-                <tr><td>stage3 output \(f_4\)</td><td>\(512\times16\times16\)</td><td>H/32</td></tr>
+                <tr><td>stage2 output \(f_3\)</td><td>\(224\times32\times32\)</td><td>H/16</td></tr>
+                <tr><td>stage3 output \(f_4\)</td><td>\(384\times16\times16\)</td><td>H/32</td></tr>
               </tbody>
             </table>
           </div>
@@ -787,7 +788,7 @@
       </section>
 
       <section id="p5" class="slide">
-        <div class="slide-head">Snake Scan Branch (Snake H/V/D45/D135)</div>
+        <div class="slide-head">Snake Scan Branch (Default H/V, Legacy H/V/D45/D135)</div>
         <div class="slide-body">
           <p>Offset prediction and deformable sampling:</p>
           <div class="eq">\[
@@ -824,12 +825,12 @@
           </div>
           <div class="def">
             <b>Detailed Explanation:</b><br>
-            1) \(D=\{h,v,d45,d135\}\) denotes four scan directions covering horizontal, vertical, and the two main diagonals.<br>
+            1) The implementation supports \(D=\{h,v,d45,d135\}\); the default chart preset activates \(h,v\), while the legacy preset also enables the two diagonals.<br>
             2) \(g_d(x_n)\) predicts direction-specific offsets; \(\tanh(\cdot)\cdot\alpha\) limits offset magnitude so that sampling points do not jump too far and cause feature mismatch.<br>
             3) \(\mathrm{GridSample}(x_n,\mathcal{G}+\Pi_d(\Delta_d))\) performs deformable sampling on continuous coordinates; \(\Pi_d\) projects offsets onto the valid geometric component of direction \(d\).<br>
             4) \(\mathrm{reshape}_d\) rearranges 2D features into a directional sequence, \(\mathrm{Mamba}_d\) models long-range dependency on that sequence, and the result is restored back to 2D space.<br>
             5) The implementation aligns normalized offsets \(\hat{\Delta}_d\) with signed targets \(T_d\) projected from GT tangents \(d_x,d_y\), and supervision is applied only on the valid centerline region \(V\).<br>
-            6) \(G_d\) is an offset-significance gate: when branch offsets are near zero, it prevents noise gradients from being amplified. This directly matches the `off_max>1e-4` logic in the code.
+            6) \(G_d\) is an offset-significance gate: when branch offsets are near zero, it prevents noise gradients from being amplified. This directly matches the <code>off_max&gt;1e-4</code> logic in the code.
           </div>
         </div>
       </section>
@@ -852,7 +853,7 @@
             1) \(B_{grid}\) is a background bias map estimated by the pixel head, mainly capturing periodic background responses such as grid lines and ticks.<br>
             2) \(\lambda_g\) is a learnable scaling factor that controls the injection strength of the background-suppression component.<br>
             3) The additive fusion \(F+\lambda_g B_{grid}\) is used to suppress background while preserving backbone semantic magnitude, avoiding the over-suppression of weak curves that can happen with multiplicative gating.<br>
-            4) The five outputs of the pixel topology head, centerline/crossing/boundary/direction/grid, correspond to connectivity, crossings, instance separation, directional consistency, and background suppression. In the current code path they mainly provide auxiliary geometric supervision during training, while <code>crossing_logits</code> additionally enter post-processing at inference.
+            4) The five outputs of the pixel topology head, centerline/crossing/boundary/direction/grid, correspond to connectivity, crossings, instance separation, directional consistency, and background suppression. In the current code path they mainly provide auxiliary geometric supervision during training, while <code>centerline_logits</code>, <code>crossing_logits</code>, and <code>boundary_logits</code> additionally enter post-processing at inference.
           </div>
           <div class="grid-2">
             <div class="card">
@@ -925,19 +926,20 @@
             5) \(r_l\) is a routing gate that controls the mixing ratio between new information and historical state: large \(r_l\) relies more on new evidence, while small \(r_l\) is more conservative.<br>
             6) \(\hat{y}_q,\hat{u}_q,\hat{m}_q\) output class, quality, and mask respectively, jointly reducing the error mode where a candidate gets a high class score but a poor mask.
           </div>
+          <p>The current default chart preset is tuned for legend-aligned charts with at most roughly ten curve instances.</p>
           <div class="table-wrap">
             <table>
               <thead><tr><th>Default Parameter</th><th>Value</th><th>Role</th></tr></thead>
               <tbody>
-                <tr><td><code>num_queries</code></td><td>240</td><td>instance candidate slots</td></tr>
-                <tr><td><code>query_layers</code></td><td>6</td><td>decoder depth</td></tr>
+                <tr><td><code>num_queries</code></td><td>40</td><td>instance candidate slots</td></tr>
+                <tr><td><code>query_layers</code></td><td>4</td><td>decoder depth</td></tr>
                 <tr><td><code>query_heads</code></td><td>8</td><td>parallel attention heads</td></tr>
-                <tr><td><code>align_topk</code></td><td>96</td><td>sparse alignment scale</td></tr>
-                <tr><td><code>cross_attn_topk</code></td><td>1024</td><td>sparse KV selection for cross-attention</td></tr>
+                <tr><td><code>align_topk</code></td><td>48</td><td>sparse alignment scale</td></tr>
+                <tr><td><code>cross_attn_topk</code></td><td>384</td><td>sparse KV selection for cross-attention</td></tr>
                 <tr><td><code>use_query_routing</code></td><td>True</td><td>hierarchical routing residual mixing</td></tr>
-                <tr><td><code>memory_bottleneck_ratio</code></td><td>0.5</td><td>memory compression bottleneck ratio</td></tr>
-                <tr><td><code>dn_groups</code></td><td>2</td><td>number of DN groups</td></tr>
-                <tr><td><code>dn_noise_scale</code></td><td>0.4</td><td>DN noise scale</td></tr>
+                <tr><td><code>memory_bottleneck_ratio</code></td><td>0.375</td><td>memory compression bottleneck ratio</td></tr>
+                <tr><td><code>dn_groups</code></td><td>1</td><td>number of DN groups</td></tr>
+                <tr><td><code>dn_noise_scale</code></td><td>0.3</td><td>DN noise scale</td></tr>
               </tbody>
             </table>
           </div>
@@ -960,14 +962,15 @@
           </div>
           <div class="def">
             <b>Current Default Status:</b>
-            The default data pipeline does not provide <code>legend_patches</code>, so this module is inactive in default training;
-            however, the full code path is available.
+            The chart preset keeps this path enabled because legend-to-curve correspondence is assumed to be informative.
+            It becomes fully effective when <code>legend_patches</code> are supplied; if the stock dataset pipeline is used unchanged,
+            the gate safely falls back to learned queries and the legend-contrastive term evaluates to zero.
           </div>
         </div>
       </section>
 
       <section id="p9" class="slide">
-        <div class="slide-head">Matching Strategy and Loss System (16+2 Terms)</div>
+        <div class="slide-head">Matching Strategy and Loss System (16+2 Capacity, Reduced Chart Default)</div>
         <div class="slide-body">
           <h4>Hungarian Main Matching</h4>
           <div class="eq">\[
@@ -1002,8 +1005,8 @@
           </div>
           <div class="def">
             <b>Current Default Aggregation Rule:</b>
-            The implementation enables uncertainty weighting by default, so the optimizer minimizes the scalar objective above.
-            If uncertainty weighting is disabled, this reduces to the manually weighted sum \(\sum_i w_i\mathcal{L}_i\).
+            The chart preset disables uncertainty weighting by default and directly minimizes the manually weighted sum \(\sum_i w_i\mathcal{L}_i\).
+            The heavier legacy preset re-enables uncertainty weighting for ablation or replication.
           </div>
           <div class="table-wrap">
             <table>
@@ -1011,11 +1014,11 @@
                 <tr><th>Group</th><th>Terms</th><th>Default Weights</th><th>Role</th></tr>
               </thead>
               <tbody>
-                <tr><td>A</td><td>cls, mask, dice, quality, aux, dn_mask, otm</td><td>2.0,5.0,5.0,0.6,0.5,1.0,0.5</td><td>instance classification and mask learning</td></tr>
-                <tr><td>B</td><td>centerline, crossing, boundary, direction, grid</td><td>0.8,0.6,0.6,0.3,0.3</td><td>topological structure constraints</td></tr>
-                <tr><td>C</td><td>cape, pcc</td><td>0.2,0.3</td><td>connectivity and discriminative enhancement</td></tr>
+                <tr><td>A</td><td>cls, mask, dice, quality, aux, dn_mask, otm</td><td>2.0,5.0,5.0,0.6,0.5,0.75,0.25</td><td>instance classification and mask learning</td></tr>
+                <tr><td>B</td><td>centerline, crossing, boundary, direction, grid</td><td>1.0,0.75,0.0,0.25,0.0</td><td>topological structure constraints in the chart preset</td></tr>
+                <tr><td>C</td><td>cape, pcc</td><td>0.3,0.0</td><td>connectivity enhancement; PCC remains available for legacy/ablation runs</td></tr>
                 <tr><td>D</td><td>snake_offset</td><td>0.1</td><td>geometric consistency for snake offsets</td></tr>
-                <tr><td>E</td><td>legend_contrastive</td><td>0.2</td><td>legend-prior alignment (optional)</td></tr>
+                <tr><td>E</td><td>legend_contrastive</td><td>0.05</td><td>legend-prior alignment when <code>legend_patches</code> are supplied</td></tr>
                 <tr><td>Optional</td><td>topograph, efd</td><td>default 0.0</td><td>additional topology/shape constraints</td></tr>
               </tbody>
             </table>
@@ -1048,7 +1051,7 @@
                 <li>Standard parameter-group learning rate: \(\eta_0\)</li>
                 <li>Mamba parameter-group learning rate: \(0.5\eta_0\)</li>
                 <li>Mamba parameter-group weight decay: 0.0 (standard groups use <code>weight_decay=1e-4</code>)</li>
-                <li>Defaults: <code>lr=2e-4</code>, <code>weight_decay=1e-4</code>, <code>grad_clip=1.0</code></li>
+                <li>Defaults: <code>lr=2e-4 | weight_decay=1e-4 | grad_clip=1.0</code></li>
               </ul>
             </div>
             <div class="card">
@@ -1092,20 +1095,21 @@
           <h4>Progressive Introduction of Complex Losses</h4>
           <div class="eq">\[
           w_k(e)=w_k^{*}\cdot\min\left(1,\frac{e}{E_{ramp}}\right),\qquad
-          k\in\{\mathrm{cape,pcc,snake\_offset}\}.
+          k\in\{\mathrm{boundary,cape,pcc,snake\_offset}\}.
           \]
           </div>
           <div class="def">
             <b>Detailed Explanation:</b><br>
             1) \(w_k(e)\) is the weight of the \(k\)-th complex loss at epoch \(e\), and \(w_k^{*}\) is its target weight.<br>
             2) \(E_{ramp}=10\) means the first 10 epochs linearly ramp the weight up, after which the loss stays at full weight.<br>
-            3) This progressive strategy lets the model first learn the primary convergent tasks (classification and masks), and then gradually adds topology and contrastive constraints to reduce instability caused by multi-loss competition.
+            3) Only positive-weight items are actually ramped; under the chart preset this means CAPE and snake-offset are introduced progressively, while the legacy preset additionally ramps boundary and PCC.<br>
+            4) This progressive strategy lets the model first learn the primary convergent tasks (classification and masks), and then gradually adds topology-oriented constraints to reduce instability caused by multi-loss competition.
           </div>
         </div>
       </section>
 
       <section id="p11" class="slide">
-        <div class="slide-head">Inference Post-processing and Crossing Preservation</div>
+        <div class="slide-head">Inference Post-processing, Recovery, and Crossing Preservation</div>
         <div class="slide-body">
           <p>Composite score:</p>
           <div class="eq">\[
@@ -1123,16 +1127,40 @@
               <tbody>
                 <tr><td><code>score_thresh</code></td><td>0.35</td><td>joint threshold on classification and quality</td></tr>
                 <tr><td><code>mask_thresh</code></td><td>0.5</td><td>mask binarization threshold</td></tr>
-                <tr><td><code>top_k</code></td><td>120</td><td>maximum number of candidates</td></tr>
-                <tr><td><code>min_pixels</code></td><td>24</td><td>remove small fragments</td></tr>
+                <tr><td><code>top_k</code></td><td>24</td><td>maximum number of candidates</td></tr>
+                <tr><td><code>min_pixels</code></td><td>24</td><td>base minimum foreground pixels per query</td></tr>
+                <tr><td><code>min_area_ratio</code></td><td>8e-5</td><td>resolution-aware minimum area floor</td></tr>
+                <tr><td><code>recover_low_thresh</code></td><td>0.35</td><td>lower threshold used for thin-line recovery</td></tr>
+                <tr><td><code>recover_score_thresh</code></td><td>0.55</td><td>score gate for recovery-eligible queries</td></tr>
+                <tr><td><code>centerline_support_thresh</code></td><td>0.35</td><td>minimum centerline confidence for recovery</td></tr>
+                <tr><td><code>boundary_suppress_thresh</code></td><td>0.55</td><td>boundary confidence used during duplicate suppression</td></tr>
+                <tr><td><code>boundary_conf_thresh</code></td><td>0.45</td><td>mean boundary confidence to relax suppression</td></tr>
+                <tr><td><code>boundary_iou_override</code></td><td>0.9</td><td>IoU ceiling for boundary-supported neighbors</td></tr>
+                <tr><td><code>component_min_pixels</code></td><td>12</td><td>minimum size for retained connected components</td></tr>
+                <tr><td><code>max_components</code></td><td>2</td><td>upper bound on components kept per query</td></tr>
+                <tr><td><code>binary_close_iters</code></td><td>1</td><td>morphological closing iterations before filtering</td></tr>
                 <tr><td><code>nms_iou</code></td><td>0.7</td><td>base NMS threshold</td></tr>
                 <tr><td><code>crossing_iou_override</code></td><td>0.92</td><td>relaxed threshold for crossing scenarios</td></tr>
                 <tr><td><code>crossing_conf_thresh</code></td><td>0.4</td><td>confidence threshold for crossing evidence</td></tr>
                 <tr><td><code>crossing_min_overlap</code></td><td>5</td><td>minimum overlap pixels to trigger crossing judgment</td></tr>
+                <tr><td><code>quality_power</code></td><td>1.0</td><td>quality-score exponent in the final rank score</td></tr>
               </tbody>
             </table>
           </div>
-          <p>crossing-aware rules:</p>
+          <p>Resolution-aware fragment filtering and thin-line recovery:</p>
+          <div class="eq">\[
+          A_{min}=\max\!\left(\texttt{min\_pixels},\left\lceil H\cdot W\cdot \texttt{min\_area\_ratio}\right\rceil\right).
+          \]
+          </div>
+          <div class="eq">\[
+          m_q^{refine}=
+          m_q^{strong}\ \cup
+          \Big(\mathbf{1}[s_q\ge \tau_{recover}]
+          \odot \mathbf{1}[\sigma(\hat{m}_q)\ge \tau_{low}]
+          \odot \mathbf{1}[\sigma(C_{center})\ge \tau_{center}]\Big).
+          \]
+          </div>
+          <p>crossing/boundary-aware rules:</p>
           <div class="eq">\[
           n_{ov}=|\Omega_{ov}(m_i,m_j)|,\qquad
           \overline{C}_{overlap}=\frac{1}{n_{ov}}\sum_{p\in\Omega_{ov}}C_{cross}(p),
@@ -1152,9 +1180,10 @@
             <b>Detailed Explanation:</b><br>
             1) \(\mathrm{IoU}(m_i,m_j)\) is the intersection-over-union of candidate masks, and \(t_{nms}\) is the regular suppression threshold (default 0.7).<br>
             2) \(n_{ov}\) is the number of pixels in the overlap region; the mean crossing confidence \(\overline{C}_{overlap}\) is computed only when \(n_{ov}\ge 5\), exactly matching <code>crossing_min_overlap=5</code> in the code.<br>
-            3) When IoU exceeds the base threshold and crossing evidence is insufficient (overlap too small or \(\overline{C}_{overlap}\le 0.4\)), the pair is treated as duplicate candidates and suppressed.<br>
-            4) When IoU exceeds the base threshold and crossing evidence is sufficient, both instances are kept if IoU is still below the relaxed threshold \(t_{override}\) (default 0.92).<br>
-            5) This logic matches `_should_suppress` in the code: it preserves deduplication ability while improving recall in crossing scenarios.
+            3) Before duplicate suppression, each query mask is refined with a lower mask threshold only when the query score is strong enough and centerline confidence supports the recovered pixels; this improves thin-line recall without globally lowering the mask threshold.<br>
+            4) When IoU exceeds the base threshold and crossing evidence is insufficient, the pair is normally treated as duplicate candidates and suppressed; however, strong boundary evidence can still keep both masks when the overlap is more consistent with adjacent curves than with true duplicates.<br>
+            5) When IoU exceeds the base threshold and crossing evidence is sufficient, both instances are kept if IoU is still below the relaxed threshold \(t_{override}\) (default 0.92). Boundary-supported pairs use their own override threshold \(t_{boundary}=0.9\).<br>
+            6) This logic matches the current <code>_refine_curve_mask</code>, connected-component filtering, and <code>_should_suppress</code> path in the code: it preserves deduplication ability while improving recall in crossing and near-parallel scenarios.
           </div>
         </div>
       </section>
@@ -1170,10 +1199,10 @@
               <tbody>
                 <tr><td>Thin-curve long-range connectivity</td><td>Progressive Mamba Encoder</td><td>Mamba-3</td><td>2D multi-direction scanning + progressive branch scheduling</td></tr>
                 <tr><td>Insufficient coverage of curved trajectories</td><td>Snake H/V/D45/D135</td><td>SCSegamba</td><td>offset learning + offset alignment loss</td></tr>
-                <tr><td>Crossing-instance confusion</td><td>Query Decoder + Relation Bias + PCC</td><td>Mask2Former / Relation-DETR / CAVIS</td><td>coupled instance-relation and discriminative learning</td></tr>
-                <tr><td>Grid-background false positives</td><td>Grid Bias + Grid Loss</td><td>background suppression idea</td><td>additive bias for suppressing periodic background</td></tr>
+                <tr><td>Crossing-instance confusion</td><td>Query Decoder + Relation Bias + optional PCC</td><td>Mask2Former / Relation-DETR / CAVIS</td><td>relation-aware decoding in the chart preset, with PCC reserved for legacy or ablation runs</td></tr>
+                <tr><td>Grid-background false positives</td><td>Grid Bias + optional Grid Loss</td><td>background suppression idea</td><td>additive bias is active by default; dense grid loss is disabled in the chart preset</td></tr>
                 <tr><td>Training stability</td><td>BATO + O2M + DN + EMA + ramp</td><td>DI-MaskDINO / DETR family</td><td>multi-strategy coordination for stable convergence</td></tr>
-                <tr><td>Use of legend priors</td><td>A/LCAB/C/E (optional)</td><td>color bias and contrastive alignment</td><td>enhance when legends exist, fall back when absent</td></tr>
+                <tr><td>Use of legend priors</td><td>A/LCAB/C/E (conditional)</td><td>color bias and contrastive alignment</td><td>chart preset exploits legend priors when <code>legend_patches</code> exist and falls back safely when they do not</td></tr>
               </tbody>
             </table>
           </div>
@@ -1184,14 +1213,15 @@
         <div class="slide-head">Default Configuration Audit</div>
         <div class="slide-body">
           <ul>
-            <li>Default model: <code>--model sota</code>, i.e. <code>CurveSOTAQueryNet</code>.</li>
-            <li>Default training hyperparameters: <code>img_size=512</code>, <code>batch_size=4</code>, <code>epochs=100</code>, <code>lr=2e-4</code>.</li>
-            <li>Default backbone: <code>dims=64/128/256/512</code>, <code>blocks=2/2/4/2</code>, <code>chunk_size=64</code>.</li>
-            <li>Default decoder: <code>num_queries=240</code>, <code>layers=6</code>, <code>heads=8</code>, <code>align_topk=96</code>, <code>cross_attn_topk=1024</code>, <code>use_query_routing=True</code>, <code>memory_bottleneck_ratio=0.5</code>.</li>
-            <li>Default losses: 16 primary loss terms + 2 optional terms (default weight 0); uncertainty weighting is enabled by default for scalar aggregation.</li>
-            <li>Default scheduling: <code>warmup_epochs=5</code>, <code>ema_decay=0.999</code>, <code>loss_ramp_epochs=10</code>.</li>
-            <li>Default inference thresholds: <code>score=0.35</code>, <code>mask=0.5</code>, <code>top_k=120</code>, <code>min_pixels=24</code>, <code>nms=0.7</code>, <code>override=0.92</code>, <code>crossing_conf=0.4</code>, <code>min_overlap=5</code>, <code>quality_power=1.0</code>.</li>
-            <li>Legend path: supported in code, inactive in the default data flow.</li>
+            <li>Default model: <code>--model sota -&gt; CurveSOTAQueryNet</code>.</li>
+            <li>Default training hyperparameters: <code>img_size=512 | batch_size=4 | epochs=100 | lr=2e-4</code>.</li>
+            <li>Default preset: <code>chart</code>; <code>legacy</code> restores the heavier historical configuration.</li>
+            <li>Default backbone: <code>dims=64/128/224/384 | blocks=2/2/3/2 | chunk_size=64</code>.</li>
+            <li>Default decoder: <code>num_queries=40 | layers=4 | heads=8 | align_topk=48 | cross_attn_topk=384 | use_query_routing=True | memory_bottleneck_ratio=0.375</code>.</li>
+            <li>Default losses: reduced chart-core objective with manual weights; <code>boundary/grid/pcc/topograph/efd</code> are zero-weight by default and uncertainty weighting is disabled in <code>chart</code>.</li>
+            <li>Default scheduling: <code>warmup_epochs=5 | ema_decay=0.999 | loss_ramp_epochs=10</code>.</li>
+            <li>Default inference thresholds: <code>score=0.35 | mask=0.5 | top_k=24 | min_pixels=24 | min_area_ratio=8e-5 | recover_low=0.35 | recover_score=0.55 | centerline_support=0.35 | boundary_suppress=0.55 | boundary_conf=0.45 | boundary_override=0.9 | component_min=12 | max_components=2 | close_iters=1 | nms=0.7 | crossing_override=0.92 | crossing_conf=0.4 | min_overlap=5 | quality_power=1.0</code>.</li>
+            <li>Legend path: enabled in the chart preset and used when <code>legend_patches</code> are supplied; otherwise the gate falls back to learned queries.</li>
           </ul>
           <div class="raw">The current webpage fully expands the architecture, formulas, symbols, tensor flow, loss grouping, training schedule, inference rules, and module-source mapping, and can be used directly for presentations.</div>
         </div>
@@ -1211,7 +1241,7 @@
                 <tr><td>SE Fusion</td><td>Squeeze-Excitation Branch Fusion</td><td>Learns weights for different branches and fuses them, reducing interference from ineffective directional branches</td><td>multi-branch information redundancy</td></tr>
                 <tr><td>LayerScale</td><td>Per-channel Residual Scaling</td><td>Multiplies residual branches by learnable scaling parameters to stabilize deep training</td><td>unstable deep training</td></tr>
                 <tr><td>DropPath</td><td>Stochastic Depth</td><td>Randomly drops residual branches during training to improve generalization</td><td>overfitting</td></tr>
-                <tr><td>Snake Scan</td><td>Deformable Directional Scan</td><td>Predicts offsets, performs deformable sampling, and then scans along H/V/D45/D135 directions</td><td>curve bending and direction change</td></tr>
+                <tr><td>Snake Scan</td><td>Deformable Directional Scan</td><td>Predicts offsets, performs deformable sampling, and then scans along H/V by default; legacy additionally enables D45/D135</td><td>curve bending and direction change</td></tr>
                 <tr><td>\(\Pi_d\)</td><td>Directional Projection</td><td>Projects offsets or tangents onto the directional component associated with direction \(d\)</td><td>mismatch between offsets and geometry</td></tr>
                 <tr><td>Stem Skip</td><td>High-resolution Skip Connection</td><td>Feeds H/2 features back into the decoder to recover fine edge detail</td><td>loss of high-resolution details</td></tr>
                 <tr><td>Grid Bias</td><td>Additive Grid Suppression Bias</td><td>Estimates a background bias from multi-scale features and adds it into the fused feature map</td><td>grid-background false positives</td></tr>
@@ -1220,13 +1250,13 @@
                 <tr><td>Top-k Align</td><td>Query-Memory Top-k Alignment</td><td>Each query aggregates only the most relevant memory subset to reduce noisy attention</td><td>complex background interference</td></tr>
                 <tr><td>Relation Bias</td><td>Query Position Relation Bias</td><td>Builds a self-attention bias from the relative positions of query reference points</td><td>weak relation modeling for crossing/parallel instances</td></tr>
                 <tr><td>DN Queries</td><td>Denoising Queries</td><td>Generated from GT-region pooling with added noise to provide stable supervision anchors</td><td>early convergence jitter</td></tr>
-                <tr><td>O2M</td><td>One-to-Many Matching</td><td>Assigns multiple queries to each GT instance as auxiliary positives</td><td>sparse supervision</td></tr>
+                <tr><td>O2M</td><td>One-to-Many Matching</td><td>Assigns a small number of auxiliary queries to each GT instance as extra positives; the chart preset uses a lighter top-k of 2</td><td>sparse supervision</td></tr>
                 <tr><td>CAPE</td><td>Connectivity-aware Loss</td><td>Composed of gap and bridge terms to jointly enforce connectivity and separation</td><td>breakage and bridging</td></tr>
-                <tr><td>PCC</td><td>Query-level Prototypical Contrastive</td><td>Pulls queries from the same instance closer and pushes queries from different instances apart</td><td>instance confusion at crossings</td></tr>
+                <tr><td>PCC</td><td>Query-level Prototypical Contrastive</td><td>Pulls queries from the same instance closer and pushes queries from different instances apart; available mainly in legacy or ablation runs because it is zero-weight in the chart preset</td><td>instance confusion at crossings</td></tr>
                 <tr><td>LCAB</td><td>Legend-Conditioned Attention Bias</td><td>Builds a cross-attention bias from the similarity between legend colors and image colors</td><td>difficulty distinguishing near-color curves with similar brightness</td></tr>
                 <tr><td>Legend Gate (E)</td><td>Legend-Absent Adaptive Gate</td><td>Fuses legend priors when available and automatically falls back to learned queries when absent</td><td>compatibility when legends are missing</td></tr>
                 <tr><td>Quality Score</td><td>Mask Quality Head</td><td>Estimates mask reliability and multiplies it with class probability to obtain the final score</td><td>false retention of low-quality high-score candidates</td></tr>
-                <tr><td>Crossing-aware NMS</td><td>Crossing-aware Suppression</td><td>Relaxes the IoU suppression threshold when crossing confidence is high, preserving both instances at crossings</td><td>false suppression in crossing regions</td></tr>
+                <tr><td>Crossing-aware NMS</td><td>Crossing- and Boundary-aware Suppression</td><td>Relaxes the IoU suppression threshold when crossing or strong boundary evidence indicates that overlapping masks should both be kept</td><td>false suppression in crossing or near-parallel regions</td></tr>
               </tbody>
             </table>
           </div>
@@ -1234,7 +1264,7 @@
             <b>Supplementary Terminology Notes (Unified Definitions):</b><br>
             1) "Connectivity" means continuous reachability along the curve direction within the same instance; "separability" means different instances remain distinguishable in crossing or adjacent regions.<br>
             2) "Geometric consistency" is mainly constrained jointly by direction/snake/CAPE: the direction field provides local orientation, snake constrains sampling offsets, and CAPE constrains global connectivity and separation.<br>
-            3) "Instance discrimination" is jointly handled by query classification, the quality branch, and the PCC contrastive term, corresponding to category, reliability, and cross-instance separation.<br>
+            3) "Instance discrimination" is jointly handled by query classification, the quality branch, relation-aware decoding, and optional PCC contrastive supervision, corresponding to category, reliability, and cross-instance separation.<br>
             4) "Background suppression" is jointly handled by the grid branch and post-processing thresholds: the former suppresses periodic background in feature space, and the latter removes low-quality candidates at the instance level.<br>
             5) Every module in the terminology table maps to a specific error pattern, which makes it easier to align method design with error analysis.
           </div>

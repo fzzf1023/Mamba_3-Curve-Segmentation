@@ -6,7 +6,7 @@
     <a href="#installation"><img src="https://img.shields.io/badge/PyTorch-2.x-EE4C2C?style=for-the-badge&logo=pytorch&logoColor=white" alt="PyTorch"></a>
     <a href="#model-variants"><img src="https://img.shields.io/badge/default-CurveSOTAQueryNet-0969da?style=for-the-badge" alt="Default Model"></a>
     <a href="#default-configuration"><img src="https://img.shields.io/badge/input-RGB%20%2B%20HSV%20%2B%20Sobel-1f6feb?style=for-the-badge" alt="Input Stack"></a>
-    <a href="#default-configuration"><img src="https://img.shields.io/badge/inference-crossing--aware%20NMS-1f883d?style=for-the-badge" alt="Inference"></a>
+    <a href="#default-configuration"><img src="https://img.shields.io/badge/inference-centerline%20recovery%20%2B%20boundary--aware%20NMS-1f883d?style=for-the-badge" alt="Inference"></a>
     <a href="index.html"><img src="https://img.shields.io/badge/docs-index.html-8250df?style=for-the-badge" alt="Docs"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-57606a?style=for-the-badge" alt="License"></a>
   </p>
@@ -20,7 +20,9 @@
 </div>
 
 > [!IMPORTANT]
-> This README is aligned with the current local implementation. The default training entry point is `CurveSOTAQueryNet` via `train.py --model sota`.
+> This README is aligned with the current local implementation. The default training entry point is `CurveSOTAQueryNet` via `train.py --model sota`, which resolves to the lighter `chart` preset.
+>
+> The default `chart` preset is tuned for chart images with legend-to-curve correspondence and up to roughly ten curve instances. Use `--preset legacy` to recover the heavier `60.85M` configuration.
 >
 > The segmentation stack is the primary project in this repository. The standalone `mamba3.py` reference remains available as a compact implementation of the sequence-model core.
 
@@ -44,25 +46,25 @@ The segmentation side is the primary project in the current codebase. It include
     </td>
     <td valign="top" width="33%">
       <strong>Backbone</strong><br>
-      <code>3 / 5 / 9 / 9</code> progressive branches<br><br>
-      Mamba spatial encoder with local, directional, reverse, and snake scan paths over <code>H / V / D45 / D135</code>.
+      <code>3 / 5 / 7 / 7</code> progressive branches<br><br>
+      Default chart preset uses a lighter Mamba encoder with local, directional, reverse, and snake <code>H / V</code> scans; the legacy preset retains <code>D45 / D135</code>.
     </td>
     <td valign="top" width="33%">
       <strong>Decoder</strong><br>
-      Query decoder + topology heads<br><br>
+      <code>40</code> queries, <code>4</code> layers<br><br>
       FPN fusion, <code>H/2</code> stem skip, and additive grid suppression feed parallel instance and topology prediction heads.
     </td>
   </tr>
   <tr>
     <td valign="top" width="33%">
       <strong>Supervision</strong><br>
-      <code>16</code> primary losses in <code>5</code> groups<br><br>
-      Instance, topology, consistency, snake-offset, and optional legend-guided supervision are organized into one criterion.
+      <code>12</code> core losses + conditional legend alignment<br><br>
+      The default chart preset keeps the query, centerline, crossing, CAPE, and snake-offset terms active while leaving heavier auxiliaries for legacy mode or ablations.
     </td>
     <td valign="top" width="33%">
       <strong>Inference</strong><br>
-      Quality-aware scoring + crossing-aware NMS<br><br>
-      The default post-process path preserves genuine crossings while removing duplicates and small fragments.
+      Quality-aware scoring + centerline-assisted recovery<br><br>
+      The default post-process path preserves genuine crossings, keeps close parallel curves apart with boundary evidence, and removes small fragments.
     </td>
     <td valign="top" width="33%">
       <strong>Publishing</strong><br>
@@ -96,7 +98,7 @@ The segmentation side is the primary project in the current codebase. It include
     </td>
     <td valign="top" width="33%">
       <a href="#loss-system"><strong>Loss System</strong></a><br>
-      The current 16-term default objective and optional extras.
+      The reduced chart-default objective and legacy extras.
     </td>
     <td valign="top" width="33%">
       <a href="#documentation-page"><strong>Documentation Page</strong></a><br>
@@ -110,13 +112,13 @@ The segmentation side is the primary project in the current codebase. It include
 | Area | Current implementation | Why it matters |
 | --- | --- | --- |
 | Input | RGB + HSV + Sobel enhancement is enabled by default in the SOTA model. | Improves thin-curve separation under low contrast and cluttered backgrounds. |
-| Backbone | Progressive branch schedules `3 / 5 / 9 / 9` over `H/4 -> H/32`. | Balances high-resolution detail with stronger long-range structure modeling. |
-| Branch types | Local depthwise convolution, row/column Mamba, reverse row/column scans, and snake scans in `H / V / D45 / D135`. | Covers both directional continuity and curved geometry. |
+| Backbone | The default chart preset uses progressive branch schedules `3 / 5 / 7 / 7` over `H/4 -> H/32`; `legacy` keeps `3 / 5 / 9 / 9`. | Balances detail and long-range structure while cutting redundant deep branches for small-instance charts. |
+| Branch types | The chart preset uses local depthwise convolution, row/column Mamba, reverse row/column scans, and snake scans in `H / V`; the legacy preset also enables `D45 / D135`. | Preserves directional continuity while matching the simpler geometry of charts with few curves. |
 | Decoder | FPN fusion, `H/2` stem skip, additive grid-suppression bias, query decoder, and topology heads. | Preserves details while separating instance decoding from topology supervision. |
-| Training | Hungarian matching, one-to-many matching, denoising queries, EMA, and loss-ramp scheduling. | Improves optimization stability and supervision density. |
-| Losses | 16 primary terms across 5 groups, plus `topograph` and `efd` as default-disabled optional terms. | Keeps the default path strong while leaving room for controlled experiments. |
-| Inference | Quality-aware scoring, crossing-aware NMS, and fragment filtering. | Improves crossing recall without letting duplicates dominate the output. |
-| Legend path | Implemented in code, but inactive by default because the standard dataset pipeline does not emit `legend_patches`. | Keeps the repository extensible without overstating default behavior. |
+| Training | Hungarian matching, lightweight one-to-many matching, denoising queries, EMA, and loss-ramp scheduling. | Improves optimization stability while reducing supervision noise in the small-instance regime. |
+| Losses | The codebase still implements 16+2 terms, but the chart preset activates a reduced core subset and conditionally uses legend contrastive alignment when `legend_patches` are present. | Keeps the default training path focused on connectivity and crossing quality instead of overloading optimization. |
+| Inference | Quality-aware scoring, centerline-assisted mask recovery, crossing/boundary-aware NMS, and fragment filtering. | Improves thin-curve recall without letting duplicates dominate the output. |
+| Legend path | Enabled in the chart preset and consumed by train/eval when `legend_patches` are supplied; when absent, the gate safely falls back to learned queries. | Lets the same model exploit legend priors in aligned charts without breaking the no-legend case. |
 
 ## Architecture
 
@@ -129,8 +131,8 @@ The segmentation side is the primary project in the current codebase. It include
     </td>
     <td valign="top" width="25%">
       <strong>02. Progressive Encoder</strong><br>
-      <code>H/4 -> H/32</code> with <code>3 / 5 / 9 / 9</code> branches<br><br>
-      Spatial Mamba blocks mix local depthwise paths with directional and snake scans for curved structures.
+      <code>H/4 -> H/32</code> with <code>3 / 5 / 7 / 7</code> default branches<br><br>
+      Spatial Mamba blocks mix local depthwise paths with directional and snake scans for curved structures; the legacy preset adds diagonal snake branches.
     </td>
     <td valign="top" width="25%">
       <strong>03. Dual Prediction Heads</strong><br>
@@ -140,7 +142,7 @@ The segmentation side is the primary project in the current codebase. It include
     <td valign="top" width="25%">
       <strong>04. Split Endpoints</strong><br>
       Train branch || infer branch<br><br>
-      Training aggregates matching and multi-group losses; inference keeps the query path dominant and uses crossing logits for post-processing.
+      Training aggregates matching and multi-group losses; inference keeps the query path dominant while centerline, crossing, and boundary logits assist post-processing.
     </td>
   </tr>
 </table>
@@ -153,16 +155,16 @@ Input image
   -> Progressive Mamba encoder
      - Stage 0: H/4,  3 branches
      - Stage 1: H/8,  5 branches
-     - Stage 2: H/16, 9 branches
-     - Stage 3: H/32, 9 branches
+     - Stage 2: H/16, 7 branches
+     - Stage 3: H/32, 7 branches
   -> FPN + H/2 stem skip + additive grid bias
   -> [ Query decoder || Pixel topology heads ]
 
 Train branch:
-  Hungarian + O2M + DN + 16 primary losses + EMA + LR schedule
+  Hungarian + light O2M + DN + chart-core losses + EMA + LR schedule
 
 Infer branch:
-  query logits + quality + masks + crossing-aware post-processing
+  query logits + quality + masks + centerline-assisted crossing/boundary-aware post-processing
 ```
 
 ## Model Variants
@@ -177,7 +179,7 @@ The repository keeps two segmentation variants that share the same Mamba-style s
 In short:
 
 - `Base` is a dense prediction baseline centered on `centerline + width -> composed_mask`.
-- `SOTA` is the main query-based instance segmentation model with matching, denoising, and crossing-aware post-processing.
+- `SOTA` is the main query-based instance segmentation model with matching, denoising, centerline-assisted recovery, and crossing/boundary-aware post-processing.
 
 The training script defaults to:
 
@@ -207,6 +209,9 @@ python train.py --model base --train_dir data/train --val_dir data/val
 # Default SOTA model
 python train.py --model sota --train_dir data/train --val_dir data/val \
     --batch_size 4 --img_size 512 --epochs 100 --lr 2e-4
+
+# Legacy heavier preset
+python train.py --model sota --preset legacy --train_dir data/train --val_dir data/val
 
 # Resume from checkpoint
 python train.py --model sota --train_dir data/train --resume checkpoints/last.pth
@@ -292,7 +297,7 @@ The dataset pipeline rasterizes polyline annotations into supervision tensors in
 Notes:
 
 - `grid_mask` falls back to background derived from `instance_ids` when explicit grid labels are absent.
-- `legend_patches` are not produced by the default dataset pipeline.
+- `legend_patches` are supported by the training and evaluation code, but the stock `dataset.py` pipeline does not emit them automatically.
 - `layering_target` is created as a placeholder and is only useful if you add real layering annotations.
 
 ## Default Configuration
@@ -311,16 +316,21 @@ Notes:
 | warmup epochs | `5` |
 | ema decay | `0.999` |
 | loss ramp epochs | `10` |
-| encoder dims | `64 / 128 / 256 / 512` |
-| blocks per stage | `2 / 2 / 4 / 2` |
+| preset | `chart` |
+| encoder dims | `64 / 128 / 224 / 384` |
+| blocks per stage | `2 / 2 / 3 / 2` |
 | decoder dim | `128` |
-| num queries | `240` |
-| query layers | `6` |
+| num queries | `40` |
+| query layers | `4` |
 | query heads | `8` |
-| align top-k | `96` |
-| cross-attn top-k | `1024` |
+| align top-k | `48` |
+| cross-attn top-k | `384` |
 | query routing | `True` |
-| memory bottleneck ratio | `0.5` |
+| memory bottleneck ratio | `0.375` |
+| denoising groups | `1` |
+| denoising noise scale | `0.3` |
+| legend-guided queries | `True` when `legend_patches` are provided |
+| uncertainty weighting | `False` in `chart`, `True` in `legacy` |
 
 ### Inference Defaults
 
@@ -328,8 +338,18 @@ Notes:
 | --- | --- |
 | score threshold | `0.35` |
 | mask threshold | `0.5` |
-| top-k | `120` |
+| top-k | `24` |
 | min pixels | `24` |
+| minimum area ratio | `8e-5` |
+| recovery low threshold | `0.35` |
+| recovery score threshold | `0.55` |
+| centerline support threshold | `0.35` |
+| boundary suppress threshold | `0.55` |
+| boundary confidence threshold | `0.45` |
+| boundary IoU override | `0.9` |
+| component minimum pixels | `12` |
+| max components per query | `2` |
+| binary close iterations | `1` |
 | NMS IoU | `0.7` |
 | crossing IoU override | `0.92` |
 | crossing confidence threshold | `0.4` |
@@ -346,6 +366,9 @@ Primary metrics for the repository's final goal, curve segmentation and extracti
 - `curve_precision`, `curve_recall`: how cleanly the extracted curve set covers GT curves
 - `curve_cldice`: topology-aware quality of the extracted curves
 - `skeleton_recall`: how much of the GT centerline is covered by the final extracted result
+- `curve_connectivity`, `curve_fragmentation`, `curve_endpoint_error`: topology diagnostics for continuity, over-fragmentation, and endpoint noise
+- `crossing_iou`, `crossing_precision`, `crossing_recall`, `crossing_f1`: dense crossing-region quality
+- `split_rate`, `merge_rate`, `instance_count_error`: instance-level over-splitting and over-merging diagnostics
 
 Auxiliary dense-head diagnostics:
 
@@ -366,22 +389,22 @@ Important detail:
 
 ## Loss System
 
-The SOTA criterion is organized as:
+The codebase still implements the full 16+2-term SOTA criterion, but the default `chart` preset activates a reduced subset:
 
 - Group A: `cls`, `mask`, `dice`, `quality`, `aux`, `dn_mask`, `otm`
-- Group B: `centerline`, `crossing`, `boundary`, `direction`, `grid`
-- Group C: `cape`, `pcc`
+- Group B: `centerline`, `crossing`, `direction`
+- Group C: `cape`
 - Group D: `snake_offset`
-- Group E: `legend_contrastive`
-- Optional, disabled by default: `topograph`, `efd`
+- Group E: `legend_contrastive` when `legend_patches` are supplied
+- Default zero-weight terms in `chart`: `boundary`, `grid`, `pcc`, `topograph`, `efd`
 
-This means the current implementation uses 16 primary loss terms, with 2 extra optional terms available for experiments.
+The heavier `legacy` preset re-enables uncertainty weighting and restores the larger auxiliary set for ablations or replication.
 
 ## Optional Modules and Caveats
 
-- Legend-guided modules `A / LCAB / C / E` are implemented in code, but default training does not activate them because `legend_patches` are not provided by the standard dataloader.
+- Legend-guided modules `A / LCAB / C / E` are enabled in the chart preset, but they only become effective when the data pipeline supplies `legend_patches`; otherwise the gate falls back and `legend_contrastive` evaluates to zero.
 - `use_style_head` and `use_layering_head` are disabled by default and should only be enabled when matching annotations exist.
-- `crossing_logits` directly participates in inference-time suppression logic. Other topology heads mainly contribute during training.
+- `crossing_logits`, `centerline_logits`, and `boundary_logits` all participate in inference-time refinement or suppression logic in the current chart preset.
 
 ## Tests
 

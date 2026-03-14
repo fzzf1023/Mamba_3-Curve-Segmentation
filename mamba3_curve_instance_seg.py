@@ -98,23 +98,33 @@ class ConvGNAct(nn.Module):
         return self.block(x)
 
 
+CHART_CURVE_BRANCHES: Tuple[Tuple[str, ...], ...] = (
+    ("local", "row", "col"),
+    ("local", "row", "col", "snake_h", "snake_v"),
+    ("local", "row", "col", "row_rev", "col_rev", "snake_h", "snake_v"),
+    ("local", "row", "col", "row_rev", "col_rev", "snake_h", "snake_v"),
+)
+
+LEGACY_BRANCHES: Tuple[Tuple[str, ...], ...] = (
+    ("local", "row", "col"),
+    ("local", "row", "col", "snake_h", "snake_v"),
+    ("local", "row", "col", "row_rev", "col_rev", "snake_h", "snake_v", "snake_d45", "snake_d135"),
+    ("local", "row", "col", "row_rev", "col_rev", "snake_h", "snake_v", "snake_d45", "snake_d135"),
+)
+
+
 @dataclass
 class CurveSegConfig:
     in_channels: int = 3
-    encoder_dims: Tuple[int, int, int, int] = (64, 128, 256, 512)
-    blocks_per_stage: Tuple[int, int, int, int] = (2, 2, 4, 2)
+    encoder_dims: Tuple[int, int, int, int] = (64, 128, 224, 384)
+    blocks_per_stage: Tuple[int, int, int, int] = (2, 2, 3, 2)
     mamba_d_state: int = 64
     mamba_headdim: int = 32
     mamba_chunk_size: int = 64
     decoder_dim: int = 128
     embed_dim: int = 16
     # Progressive branch design: controls which branches are active per stage
-    branches_per_stage: Tuple[Tuple[str, ...], ...] = (
-        ("local", "row", "col"),                                                                   # Stage 0: 3
-        ("local", "row", "col", "snake_h", "snake_v"),                                            # Stage 1: 5
-        ("local", "row", "col", "row_rev", "col_rev", "snake_h", "snake_v", "snake_d45", "snake_d135"),  # Stage 2: 9
-        ("local", "row", "col", "row_rev", "col_rev", "snake_h", "snake_v", "snake_d45", "snake_d135"),  # Stage 3: 9
-    )
+    branches_per_stage: Tuple[Tuple[str, ...], ...] = CHART_CURVE_BRANCHES
 
     # Ablation flags — set False to ablate individual architectural contributions
     use_snake_offset_loss: bool = True   # snake offset alignment with GT tangent direction
@@ -125,6 +135,22 @@ class CurveSegConfig:
     def __post_init__(self):
         if len(self.encoder_dims) != len(self.blocks_per_stage):
             raise ValueError("encoder_dims and blocks_per_stage must have the same length")
+        if len(self.branches_per_stage) != len(self.blocks_per_stage):
+            raise ValueError("branches_per_stage and blocks_per_stage must have the same length")
+
+    @classmethod
+    def chart_preset(cls, **kwargs) -> "CurveSegConfig":
+        return cls(**kwargs)
+
+    @classmethod
+    def legacy_preset(cls, **kwargs) -> "CurveSegConfig":
+        defaults = dict(
+            encoder_dims=(64, 128, 256, 512),
+            blocks_per_stage=(2, 2, 4, 2),
+            branches_per_stage=LEGACY_BRANCHES,
+        )
+        defaults.update(kwargs)
+        return cls(**defaults)
 
 
 def _build_mamba_args(d_model: int, cfg: CurveSegConfig) -> Mamba3Config:

@@ -357,6 +357,143 @@ def compute_cldice(pred_masks: Tensor, gt_masks: Tensor) -> float:
     return float(2 * tprec * tsens / (tprec + tsens + 1e-8))
 
 
+def _count_components_np(mask: np.ndarray) -> int:
+    binary = mask > 0.5
+    if not binary.any():
+        return 0
+    try:
+        from scipy import ndimage as ndi
+
+        _, count = ndi.label(binary)
+        return int(count)
+    except ImportError:
+        visited = np.zeros_like(binary, dtype=bool)
+        count = 0
+        h, w = binary.shape
+        for y in range(h):
+            for x in range(w):
+                if not binary[y, x] or visited[y, x]:
+                    continue
+                count += 1
+                stack = [(y, x)]
+                visited[y, x] = True
+                while stack:
+                    cy, cx = stack.pop()
+                    for ny in range(max(0, cy - 1), min(h, cy + 2)):
+                        for nx in range(max(0, cx - 1), min(w, cx + 2)):
+                            if not visited[ny, nx] and binary[ny, nx]:
+                                visited[ny, nx] = True
+                                stack.append((ny, nx))
+        return int(count)
+
+
+def _count_endpoints_np(mask: np.ndarray) -> int:
+    binary = (mask > 0.5).astype(np.uint8)
+    if binary.sum() == 0:
+        return 0
+    padded = np.pad(binary, ((1, 1), (1, 1)), mode="constant")
+    h, w = binary.shape
+    neighbours = np.zeros_like(binary, dtype=np.int32)
+    for dy in (-1, 0, 1):
+        for dx in (-1, 0, 1):
+            if dy == 0 and dx == 0:
+                continue
+            neighbours += padded[1 + dy:1 + dy + h, 1 + dx:1 + dx + w]
+    return int(((binary > 0) & (neighbours == 1)).sum())
+
+
+def compute_connectivity_metrics(pred_masks: Tensor, gt_masks: Tensor) -> Dict[str, float]:
+    pred_np = pred_masks.detach().cpu().numpy()
+    gt_np = gt_masks.detach().cpu().numpy()
+    connectivity_scores = []
+    fragmentation_scores = []
+    endpoint_errors = []
+
+    for b in range(pred_np.shape[0]):
+        pred_bin = (pred_np[b, 0] > 0.5).astype(np.float32)
+        gt_bin = (gt_np[b, 0] > 0.5).astype(np.float32)
+        if gt_bin.sum() < 1:
+            continue
+
+        pred_skel = _skeletonize_np(pred_bin)
+        gt_skel = _skeletonize_np(gt_bin)
+        pred_components = _count_components_np(pred_skel)
+        gt_components = max(_count_components_np(gt_skel), 1)
+        pred_endpoints = _count_endpoints_np(pred_skel)
+        gt_endpoints = max(_count_endpoints_np(gt_skel), 1)
+
+        if pred_components == 0:
+            connectivity_scores.append(0.0)
+            fragmentation_scores.append(1.0)
+            endpoint_errors.append(1.0)
+            continue
+
+        connectivity_scores.append(min(gt_components / pred_components, 1.0))
+        fragmentation_scores.append(max(pred_components - gt_components, 0) / gt_components)
+        endpoint_errors.append(min(abs(pred_endpoints - gt_endpoints) / gt_endpoints, 1.0))
+
+    if not connectivity_scores:
+        return {
+            "curve_connectivity": 0.0,
+            "curve_fragmentation": 0.0,
+            "curve_endpoint_error": 0.0,
+        }
+    return {
+        "curve_connectivity": float(np.mean(connectivity_scores)),
+        "curve_fragmentation": float(np.mean(fragmentation_scores)),
+        "curve_endpoint_error": float(np.mean(endpoint_errors)),
+    }
+
+
+def compute_crossing_metrics(pred: Tensor, gt: Tensor, eps: float = 1e-6) -> Dict[str, float]:
+    pix = compute_pixel_metrics(pred, gt, eps=eps)
+    precision = pix["pixel_precision"]
+    recall = pix["pixel_recall"]
+    return {
+        "crossing_iou": pix["pixel_iou"],
+        "crossing_precision": precision,
+        "crossing_recall": recall,
+        "crossing_f1": float(2 * precision * recall / max(precision + recall, eps)),
+    }
+
+
+def compute_split_merge_rates(
+    pred_masks_list: List[Tensor],
+    gt_masks_list: List[Tensor],
+    overlap_thresh: float = 0.1,
+) -> Dict[str, float]:
+    split_rates = []
+    merge_rates = []
+    count_errors = []
+
+    for pred_masks, gt_masks in zip(pred_masks_list, gt_masks_list):
+        n_pred = int(pred_masks.shape[0])
+        n_gt = int(gt_masks.shape[0])
+        count_errors.append(min(abs(n_pred - n_gt) / max(n_gt, 1), 1.0))
+
+        if n_pred == 0 or n_gt == 0:
+            split_rates.append(0.0 if n_gt == 0 else 1.0)
+            merge_rates.append(0.0 if n_pred == 0 else 1.0)
+            continue
+
+        pred_f = pred_masks.float().flatten(1)
+        gt_f = gt_masks.float().flatten(1)
+        inter = torch.einsum("pd,gd->pg", pred_f, gt_f)
+        pred_cover = inter / pred_f.sum(1, keepdim=True).clamp_min(1.0)
+        gt_cover = inter / gt_f.sum(1).unsqueeze(0).clamp_min(1.0)
+
+        split_rates.append(float(((gt_cover >= overlap_thresh).sum(dim=0) > 1).float().mean()))
+        merge_rates.append(float(((pred_cover >= overlap_thresh).sum(dim=1) > 1).float().mean()))
+
+    if not split_rates:
+        return {"split_rate": 0.0, "merge_rate": 0.0, "instance_count_error": 0.0}
+    return {
+        "split_rate": float(np.mean(split_rates)),
+        "merge_rate": float(np.mean(merge_rates)),
+        "instance_count_error": float(np.mean(count_errors)),
+    }
+
+
 # ---------------------------------------------------------------------------
 # Extraction helpers
 # ---------------------------------------------------------------------------
@@ -457,6 +594,7 @@ def evaluate_batch(
             metrics.update(coco_results)
 
         metrics.update(compute_pq(pred_masks_list, pred_scores_list, gt_masks_list))
+        metrics.update(compute_split_merge_rates(pred_masks_list, gt_masks_list))
 
     # Dense centerline-head quality.
     if "centerline_logits" in outputs and "centerline_mask" in targets:
@@ -470,6 +608,7 @@ def evaluate_batch(
 
         # Final extracted curve coverage over GT centerlines.
         metrics["skeleton_recall"] = compute_skeleton_recall(curve_probs, center_gt)
+        metrics.update(compute_connectivity_metrics(curve_probs, center_gt))
 
     # Final extracted curves versus GT curve regions.
     if "curve_mask" in targets:
@@ -480,6 +619,14 @@ def evaluate_batch(
         metrics["curve_precision"] = pix["pixel_precision"]
         metrics["curve_recall"] = pix["pixel_recall"]
         metrics["curve_cldice"] = compute_cldice(curve_probs, curve_gt)
+        if "centerline_mask" not in targets:
+            metrics.update(compute_connectivity_metrics(curve_probs, curve_gt))
+
+    crossing_key = "crossing_mask" if "crossing_mask" in targets else "junction_mask"
+    if "crossing_logits" in outputs and crossing_key in targets:
+        crossing_pred = _ensure_channel_first(torch.sigmoid(outputs["crossing_logits"]))
+        crossing_gt = _ensure_channel_first(targets[crossing_key].to(device).float())
+        metrics.update(compute_crossing_metrics(crossing_pred, crossing_gt))
 
     return metrics
 

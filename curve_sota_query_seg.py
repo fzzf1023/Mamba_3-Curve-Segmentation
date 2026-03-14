@@ -20,6 +20,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from typing import Dict, List, Optional, Sequence, Tuple
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 from einops import rearrange
@@ -523,18 +524,18 @@ class CurveSOTAConfig:
     backbone: CurveSegConfig = field(default_factory=CurveSegConfig)
     use_hsv_features: bool = True
     use_gradient_features: bool = True
-    num_queries: int = 240
+    num_queries: int = 40
     num_styles: int = 5
-    query_layers: int = 6
+    query_layers: int = 4
     query_heads: int = 8
     query_dropout: float = 0.1
     query_ff_mult: int = 4
-    align_topk: int = 96
-    cross_attn_topk: int = 1024   # sparse KV selection for cross-attn (0=disable)
+    align_topk: int = 48
+    cross_attn_topk: int = 384   # sparse KV selection for cross-attn (0=disable)
     use_query_routing: bool = True
-    memory_bottleneck_ratio: float = 0.5
-    dn_groups: int = 2          # number of denoising query groups per image
-    dn_noise_scale: float = 0.4  # Gaussian noise std for DN query initialization
+    memory_bottleneck_ratio: float = 0.375
+    dn_groups: int = 1          # number of denoising query groups per image
+    dn_noise_scale: float = 0.3  # Gaussian noise std for DN query initialization
     # Ablation config flags (Improvement 3 & 11)
     use_bato: bool = True               # BATO memory reweighting (layer 0)
     use_query_align: bool = True         # Top-k query-memory alignment
@@ -546,9 +547,28 @@ class CurveSOTAConfig:
     use_cape_loss: bool = True           # CAPE gap + bridge connectivity (MICCAI 2025)
     use_pcc_loss: bool = True            # Query-level PCC contrastive (CAVIS, ICCV 2025)
     # Legend-guided innovations (A, LCAB, C, E)
-    use_legend_queries: bool = True      # Enable all 4 legend-guided innovations
+    use_legend_queries: bool = True      # Legend-conditioned charts benefit from legend-guided query init
     lcab_temperature: float = 50.0       # LCAB: Lab colour similarity sharpness (larger=sharper)
     legend_contrastive_tau: float = 0.1  # C: InfoNCE temperature for legend–curve alignment
+
+    @classmethod
+    def chart_preset(cls, **kwargs) -> "CurveSOTAConfig":
+        return cls(**kwargs)
+
+    @classmethod
+    def legacy_preset(cls, **kwargs) -> "CurveSOTAConfig":
+        defaults = dict(
+            backbone=CurveSegConfig.legacy_preset(),
+            num_queries=240,
+            query_layers=6,
+            align_topk=96,
+            cross_attn_topk=1024,
+            memory_bottleneck_ratio=0.5,
+            dn_groups=2,
+            use_legend_queries=True,
+        )
+        defaults.update(kwargs)
+        return cls(**defaults)
 
 
 class CurveSOTAQueryNet(nn.Module):
@@ -1005,24 +1025,46 @@ class SOTALossWeights:
     dice: float = 5.0
     quality: float = 0.6
     aux: float = 0.5
-    dn_mask: float = 1.0        # denoising query supervision
-    otm: float = 0.5            # one-to-many auxiliary matching
+    dn_mask: float = 0.75       # denoising query supervision
+    otm: float = 0.25           # one-to-many auxiliary matching
     # --- Group B: Pixel Topology Losses ---
-    centerline: float = 0.8
-    crossing: float = 0.6
-    boundary: float = 0.6
-    direction: float = 0.3
-    grid: float = 0.3          # grid/background auxiliary loss (supervises grid_logits_conv)
+    centerline: float = 1.0
+    crossing: float = 0.75
+    boundary: float = 0.0
+    direction: float = 0.25
+    grid: float = 0.0          # grid/background auxiliary loss (supervises grid_logits_conv)
     # --- Group C: Connectivity & Contrastive ---
-    cape: float = 0.2           # CAPE gap + bridge connectivity (MICCAI 2025)
-    pcc: float = 0.3            # query-level PCC contrastive (CAVIS, ICCV 2025)
+    cape: float = 0.3           # CAPE gap + bridge connectivity (MICCAI 2025)
+    pcc: float = 0.0            # query-level PCC contrastive (CAVIS, ICCV 2025)
     # --- Group D: Snake Offset ---
     snake_offset: float = 0.1   # Snake offset alignment with GT tangent direction
     # --- Group E: Legend Contrastive ---
-    legend_contrastive: float = 0.2  # InfoNCE legend–curve alignment; 0 when no legend data
+    legend_contrastive: float = 0.05  # InfoNCE legend–curve alignment; keep small in chart preset
     # --- Optional (disabled by default) ---
     topograph: float = 0.0      # Topograph multi-threshold topology (ICLR 2025); set >0 to enable
     efd: float = 0.0            # Elliptical Fourier Descriptor (EFDTR, ICML 2025); set >0 to enable
+
+    @classmethod
+    def chart_preset(cls, **kwargs) -> "SOTALossWeights":
+        return cls(**kwargs)
+
+    @classmethod
+    def legacy_preset(cls, **kwargs) -> "SOTALossWeights":
+        defaults = dict(
+            dn_mask=1.0,
+            otm=0.5,
+            centerline=0.8,
+            crossing=0.6,
+            boundary=0.6,
+            direction=0.3,
+            grid=0.3,
+            cape=0.2,
+            pcc=0.3,
+            snake_offset=0.1,
+            legend_contrastive=0.2,
+        )
+        defaults.update(kwargs)
+        return cls(**defaults)
 
 
 class CurveSOTACriterion(nn.Module):
@@ -1037,7 +1079,7 @@ class CurveSOTACriterion(nn.Module):
         self.weights = weights
         self.legend_contrastive_tau = legend_contrastive_tau
         self.matcher = HungarianCurveMatcher(matcher_weights)
-        self.one_to_many_matcher = OneToManyMatcher(top_k=4)
+        self.one_to_many_matcher = OneToManyMatcher(top_k=2)
         self.use_uncertainty_weighting = use_uncertainty_weighting
         self._loss_keys = (
             "cls", "mask", "dice", "quality", "aux", "dn_mask", "otm",
@@ -1156,6 +1198,66 @@ class CurveSOTACriterion(nn.Module):
         boundary = ((x != up) | (x != down) | (x != left) | (x != right)) & (x > 0)
         return boundary.float()
 
+    @staticmethod
+    def _positive_fraction(mask: Optional[Tensor]) -> float:
+        if mask is None or mask.numel() == 0:
+            return 0.0
+        return float(mask.float().mean().item())
+
+    @staticmethod
+    def _clamped_inverse_ratio(value: float, target: float, lo: float, hi: float) -> float:
+        if value <= 0.0:
+            return hi
+        return float(max(lo, min(hi, target / value)))
+
+    def _task_weight_multipliers(
+        self,
+        pixel_targets: Dict[str, Tensor],
+        inst_targets: List[Dict[str, Tensor]],
+        instance_ids_map: Optional[Tensor],
+        crossing_key: str,
+        boundary_target: Optional[Tensor],
+    ) -> Dict[str, float]:
+        multipliers = {key: 1.0 for key in self._loss_keys}
+
+        center_target = pixel_targets.get("centerline_mask")
+        center_ratio = self._positive_fraction(
+            _ensure_channel_first_mask(center_target) if center_target is not None else None
+        )
+        if center_ratio > 0.0:
+            multipliers["centerline"] = self._clamped_inverse_ratio(center_ratio, target=0.02, lo=1.0, hi=2.0)
+            multipliers["cape"] = self._clamped_inverse_ratio(center_ratio, target=0.02, lo=1.0, hi=1.6)
+
+        if crossing_key in pixel_targets:
+            cross_ratio = self._positive_fraction(_ensure_channel_first_mask(pixel_targets[crossing_key]))
+            if cross_ratio > 0.0:
+                multipliers["crossing"] = self._clamped_inverse_ratio(cross_ratio, target=0.005, lo=1.0, hi=3.0)
+
+        if boundary_target is not None:
+            boundary_ratio = self._positive_fraction(boundary_target.unsqueeze(1) if boundary_target.dim() == 3 else boundary_target)
+            if boundary_ratio > 0.0:
+                multipliers["boundary"] = self._clamped_inverse_ratio(boundary_ratio, target=0.01, lo=0.8, hi=1.5)
+
+        if "grid_mask" not in pixel_targets:
+            multipliers["grid"] = 0.5
+
+        if instance_ids_map is not None:
+            instance_counts = []
+            for ids in instance_ids_map:
+                instance_counts.append(int(torch.unique(ids[ids > 0]).numel()))
+            avg_instances = float(np.mean(instance_counts)) if instance_counts else 0.0
+        else:
+            instance_counts = [
+                int(t["masks"].shape[0]) if "masks" in t else 0
+                for t in inst_targets
+            ]
+            avg_instances = float(np.mean(instance_counts)) if instance_counts else 0.0
+        if avg_instances < 2.0:
+            multipliers["pcc"] = 0.75
+            multipliers["otm"] = 0.85
+
+        return multipliers
+
     def forward(self, outputs: Dict[str, Tensor], targets: List[Dict[str, Tensor]] | Dict[str, Tensor]) -> Dict[str, Tensor]:
         device = outputs["pred_logits"].device
         bsz = outputs["pred_logits"].shape[0]
@@ -1190,7 +1292,7 @@ class CurveSOTACriterion(nn.Module):
             outputs["pred_masks"],
             inst_targets,
             indices,
-        )
+        ) if self.weights.quality > 0 else outputs["pred_logits"].sum() * 0.0
 
         # Deep supervision from intermediate decoder layers (cls+mask+dice averaged)
         aux_cls = outputs["pred_logits"].sum() * 0.0
@@ -1210,12 +1312,26 @@ class CurveSOTACriterion(nn.Module):
         losses["aux"] = aux_cls + aux_mask + aux_dice
 
         # One-to-many auxiliary matching (denser supervision per GT)
-        otm_indices = self.one_to_many_matcher(outputs, inst_targets)
-        otm_m, otm_d = self._loss_masks(outputs["pred_masks"], inst_targets, otm_indices)
-        losses["otm"] = otm_m + otm_d
+        need_otm = self.weights.otm > 0 or self.weights.pcc > 0
+        if need_otm:
+            otm_indices = self.one_to_many_matcher(outputs, inst_targets)
+            if self.weights.otm > 0:
+                otm_m, otm_d = self._loss_masks(outputs["pred_masks"], inst_targets, otm_indices)
+                losses["otm"] = otm_m + otm_d
+            else:
+                losses["otm"] = outputs["pred_logits"].sum() * 0.0
+        else:
+            otm_indices = [
+                (
+                    torch.empty(0, dtype=torch.long, device=device),
+                    torch.empty(0, dtype=torch.long, device=device),
+                )
+                for _ in range(bsz)
+            ]
+            losses["otm"] = outputs["pred_logits"].sum() * 0.0
 
         # Denoising query direct supervision (no Hungarian matching needed)
-        if "dn_outputs" in outputs and "dn_meta" in outputs:
+        if self.weights.dn_mask > 0 and "dn_outputs" in outputs and "dn_meta" in outputs:
             losses["dn_mask"] = self._compute_dn_loss(
                 outputs["dn_outputs"], inst_targets, outputs["dn_meta"]
             )
@@ -1224,29 +1340,30 @@ class CurveSOTACriterion(nn.Module):
 
         # ═══ Group B: Pixel Topology Losses ═══
 
-        if "centerline_mask" in pixel_targets:
+        if self.weights.centerline > 0 and "centerline_mask" in pixel_targets:
             center_t = _ensure_channel_first_mask(pixel_targets["centerline_mask"]).to(device)
             losses["centerline"] = dice_loss_from_logits(outputs["centerline_logits"], center_t) + sigmoid_focal_loss(outputs["centerline_logits"], center_t)
         else:
             losses["centerline"] = outputs["centerline_logits"].sum() * 0.0
 
         crossing_key = "crossing_mask" if "crossing_mask" in pixel_targets else "junction_mask"
-        if crossing_key in pixel_targets:
+        if self.weights.crossing > 0 and crossing_key in pixel_targets:
             cross_t = _ensure_channel_first_mask(pixel_targets[crossing_key]).to(device)
             losses["crossing"] = dice_loss_from_logits(outputs["crossing_logits"], cross_t) + sigmoid_focal_loss(outputs["crossing_logits"], cross_t, alpha=0.75)
         else:
             losses["crossing"] = outputs["crossing_logits"].sum() * 0.0
 
-        if "boundary_mask" in pixel_targets:
-            boundary_t = _ensure_channel_first_mask(pixel_targets["boundary_mask"]).to(device)
-            losses["boundary"] = dice_loss_from_logits(outputs["boundary_logits"], boundary_t) + sigmoid_focal_loss(outputs["boundary_logits"], boundary_t, alpha=0.75)
-        elif instance_ids_map is not None:
-            boundary_t = self._boundary_from_instance_ids(instance_ids_map).unsqueeze(1)
-            losses["boundary"] = dice_loss_from_logits(outputs["boundary_logits"], boundary_t) + sigmoid_focal_loss(outputs["boundary_logits"], boundary_t, alpha=0.75)
+        boundary_target: Optional[Tensor] = None
+        if self.weights.boundary > 0 and "boundary_mask" in pixel_targets:
+            boundary_target = _ensure_channel_first_mask(pixel_targets["boundary_mask"]).to(device)
+            losses["boundary"] = dice_loss_from_logits(outputs["boundary_logits"], boundary_target) + sigmoid_focal_loss(outputs["boundary_logits"], boundary_target, alpha=0.75)
+        elif self.weights.boundary > 0 and instance_ids_map is not None:
+            boundary_target = self._boundary_from_instance_ids(instance_ids_map).unsqueeze(1)
+            losses["boundary"] = dice_loss_from_logits(outputs["boundary_logits"], boundary_target) + sigmoid_focal_loss(outputs["boundary_logits"], boundary_target, alpha=0.75)
         else:
             losses["boundary"] = outputs["boundary_logits"].sum() * 0.0
 
-        if "direction_vectors" in pixel_targets and "centerline_mask" in pixel_targets:
+        if self.weights.direction > 0 and "direction_vectors" in pixel_targets and "centerline_mask" in pixel_targets:
             dir_t = pixel_targets["direction_vectors"].to(device).float()
             valid = (_ensure_channel_first_mask(pixel_targets["centerline_mask"]).to(device) > 0.5).float()
             losses["direction"] = direction_cosine_loss(
@@ -1262,7 +1379,7 @@ class CurveSOTACriterion(nn.Module):
 
         # Grid auxiliary loss: use real grid_mask if available, else fall back to
         # background from instance_ids (unified with base model behavior, item 3).
-        if "grid_logits" in outputs:
+        if self.weights.grid > 0 and "grid_logits" in outputs:
             if "grid_mask" in pixel_targets and pixel_targets["grid_mask"].sum() > 0:
                 grid_target = _ensure_channel_first_mask(pixel_targets["grid_mask"]).to(device)
             elif instance_ids_map is not None:
@@ -1281,7 +1398,7 @@ class CurveSOTACriterion(nn.Module):
         # ═══ Group C: Connectivity & Contrastive ═══
 
         # CAPE: skeleton recall (gap) + inter-instance bridge penalty (MICCAI 2025)
-        if instance_ids_map is not None and "centerline_mask" in pixel_targets:
+        if self.weights.cape > 0 and instance_ids_map is not None and "centerline_mask" in pixel_targets:
             center_t_cape = _ensure_channel_first_mask(pixel_targets["centerline_mask"]).to(device)
             pred_center_probs = torch.sigmoid(outputs["centerline_logits"])
             losses["cape"] = cape_connectivity_loss(
@@ -1291,7 +1408,7 @@ class CurveSOTACriterion(nn.Module):
             losses["cape"] = outputs["centerline_logits"].sum() * 0.0
 
         # Query-level PCC contrastive: pull same-GT queries, push different-GT (CAVIS, ICCV 2025)
-        if "query_feats" in outputs and any(s.numel() > 0 for s, _ in otm_indices):
+        if self.weights.pcc > 0 and "query_feats" in outputs and any(s.numel() > 0 for s, _ in otm_indices):
             losses["pcc"] = query_pcc_loss(outputs["query_feats"], otm_indices)
         else:
             losses["pcc"] = outputs["pred_logits"].sum() * 0.0
@@ -1338,6 +1455,8 @@ class CurveSOTACriterion(nn.Module):
         # decoder query features.  Active only when legend_patches was passed
         # to the model forward; zero otherwise (no gradient, no overhead).
         if (
+            self.weights.legend_contrastive > 0
+            and
             "legend_feats" in outputs
             and "legend_valid" in outputs
             and "query_feats" in outputs
@@ -1388,10 +1507,17 @@ class CurveSOTACriterion(nn.Module):
             "topograph": self.weights.topograph,
             "efd": self.weights.efd,
         }
+        task_weight_multipliers = self._task_weight_multipliers(
+            pixel_targets,
+            inst_targets,
+            instance_ids_map,
+            crossing_key,
+            boundary_target,
+        )
 
         total = losses["cls"].new_tensor(0.0)
         for key in self._loss_keys:
-            w = float(manual_weights[key])
+            w = float(manual_weights[key]) * float(task_weight_multipliers.get(key, 1.0))
             if w == 0.0:
                 continue
             if self.use_uncertainty_weighting:
@@ -1470,9 +1596,19 @@ class CurveSOTACriterion(nn.Module):
 class InferenceConfig:
     score_thresh: float = 0.35
     mask_thresh: float = 0.5
-    top_k: int = 120
+    top_k: int = 24
     nms_iou: float = 0.7
     min_pixels: int = 24
+    min_area_ratio: float = 8e-5
+    recover_low_thresh: float = 0.35
+    recover_score_thresh: float = 0.55
+    centerline_support_thresh: float = 0.35
+    boundary_suppress_thresh: float = 0.55
+    boundary_conf_thresh: float = 0.45
+    boundary_iou_override: float = 0.9
+    component_min_pixels: int = 12
+    max_components: int = 2
+    binary_close_iters: int = 1
     quality_power: float = 1.0
     crossing_iou_override: float = 0.92  # allow overlap up to this IoU when crossing detected
     crossing_conf_thresh: float = 0.4
@@ -1485,14 +1621,102 @@ def _binary_iou(a: Tensor, b: Tensor, eps: float = 1e-6) -> float:
     return float((inter + eps) / (union + eps))
 
 
+def _binary_close(mask: Tensor, steps: int) -> Tensor:
+    if steps <= 0:
+        return mask
+    x = mask.float().unsqueeze(0).unsqueeze(0)
+    for _ in range(steps):
+        x = F.max_pool2d(x, kernel_size=3, stride=1, padding=1)
+    for _ in range(steps):
+        x = 1.0 - F.max_pool2d(1.0 - x, kernel_size=3, stride=1, padding=1)
+    return x.squeeze(0).squeeze(0) > 0.5
+
+
+def _filter_small_components(mask: Tensor, min_pixels: int, max_components: int) -> Tensor:
+    if int(mask.sum()) == 0:
+        return mask
+    try:
+        from scipy import ndimage as ndi
+    except ImportError:
+        return mask if int(mask.sum()) >= int(min_pixels) else torch.zeros_like(mask)
+
+    labels, n_labels = ndi.label(mask.detach().cpu().numpy().astype(np.uint8))
+    if n_labels == 0:
+        return torch.zeros_like(mask)
+
+    sizes = np.bincount(labels.ravel())[1:]
+    keep = [idx + 1 for idx, size in enumerate(sizes) if int(size) >= int(min_pixels)]
+    if not keep:
+        keep = [int(np.argmax(sizes)) + 1]
+    if max_components > 0 and len(keep) > max_components:
+        keep = sorted(keep, key=lambda idx: int(sizes[idx - 1]), reverse=True)[:max_components]
+    filtered = np.isin(labels, np.asarray(keep, dtype=np.int32))
+    return torch.from_numpy(filtered).to(mask.device).bool()
+
+
+def _resolve_min_pixels(mask_probs: Tensor, cfg: InferenceConfig) -> int:
+    h, w = mask_probs.shape[-2:]
+    return max(int(cfg.min_pixels), int(round(float(h * w) * float(cfg.min_area_ratio))))
+
+
+def _refine_curve_mask(
+    mask_probs: Tensor,
+    score: float,
+    centerline_map: Optional[Tensor],
+    boundary_map: Optional[Tensor],
+    crossing_map: Optional[Tensor],
+    cfg: InferenceConfig,
+) -> Tensor:
+    refined = mask_probs > cfg.mask_thresh
+    centerline_2d = centerline_map.squeeze(0) if centerline_map is not None else None
+    boundary_2d = boundary_map.squeeze(0) if boundary_map is not None else None
+    crossing_2d = crossing_map.squeeze(0) if crossing_map is not None else None
+
+    if score >= cfg.recover_score_thresh and centerline_2d is not None:
+        support = (mask_probs > cfg.recover_low_thresh) & (centerline_2d > cfg.centerline_support_thresh)
+        if boundary_2d is not None:
+            support = support & (boundary_2d < cfg.boundary_suppress_thresh)
+        refined = refined | support
+        if cfg.binary_close_iters > 0:
+            closed = _binary_close(refined, cfg.binary_close_iters)
+            if boundary_2d is not None:
+                closed = closed & ((boundary_2d < cfg.boundary_suppress_thresh) | refined)
+            refined = refined | (closed & ((centerline_2d > cfg.centerline_support_thresh) | refined))
+
+    if score >= cfg.recover_score_thresh and crossing_2d is not None:
+        refined = refined | (
+            (mask_probs > cfg.recover_low_thresh)
+            & (crossing_2d > cfg.crossing_conf_thresh)
+        )
+
+    min_pixels = _resolve_min_pixels(mask_probs, cfg)
+    refined = _filter_small_components(
+        refined,
+        min_pixels=max(int(cfg.component_min_pixels), max(min_pixels // 3, 1)),
+        max_components=int(cfg.max_components),
+    )
+    if int(refined.sum()) < min_pixels:
+        return torch.zeros_like(refined)
+    return refined
+
+
+def _region_confidence(score_map: Optional[Tensor], overlap: Tensor) -> float:
+    if score_map is None or int(overlap.sum()) == 0:
+        return 0.0
+    return float((score_map.squeeze(0) * overlap.float()).sum() / overlap.float().sum())
+
+
 def _should_suppress(
     new_mask: Tensor,
     kept_masks: List[Tensor],
     crossing_map: Optional[Tensor],    # (1, H, W) sigmoid crossing prob
+    boundary_map: Optional[Tensor],
     nms_iou: float,
     crossing_iou_override: float,
     crossing_conf_thresh: float,
     crossing_min_overlap: int,
+    boundary_iou_override: float,
+    boundary_conf_thresh: float,
 ) -> bool:
     """
     Returns True when new_mask should be suppressed.
@@ -1507,15 +1731,14 @@ def _should_suppress(
         if iou <= nms_iou:
             continue
         # Above base threshold: check for crossing evidence in overlap
-        if crossing_map is not None:
-            overlap = (new_mask & km).float()
-            if int(overlap.sum()) >= int(crossing_min_overlap):
-                cross_conf = float(
-                    (crossing_map.squeeze(0) * overlap).sum() / overlap.sum()
-                )
-                # Strong crossing → raise threshold, keep both masks
-                if cross_conf > crossing_conf_thresh and iou < crossing_iou_override:
-                    continue
+        overlap = new_mask & km
+        if int(overlap.sum()) >= int(crossing_min_overlap):
+            cross_conf = _region_confidence(crossing_map, overlap)
+            if cross_conf > crossing_conf_thresh and iou < crossing_iou_override:
+                continue
+            boundary_conf = _region_confidence(boundary_map, overlap)
+            if boundary_conf > boundary_conf_thresh and iou < boundary_iou_override:
+                continue
         return True  # suppress
     return False  # keep
 
@@ -1537,6 +1760,12 @@ def postprocess_curve_instances(
         crossing_map: Optional[Tensor] = None
         if "crossing_logits" in outputs:
             crossing_map = torch.sigmoid(outputs["crossing_logits"][b])   # (1, H, W)
+        centerline_map: Optional[Tensor] = None
+        if "centerline_logits" in outputs:
+            centerline_map = torch.sigmoid(outputs["centerline_logits"][b])
+        boundary_map: Optional[Tensor] = None
+        if "boundary_logits" in outputs:
+            boundary_map = torch.sigmoid(outputs["boundary_logits"][b])
 
         order = torch.argsort(cls_scores[b], descending=True)[: cfg.top_k]
         kept_masks, kept_scores, kept_styles = [], [], []
@@ -1544,12 +1773,28 @@ def postprocess_curve_instances(
             s = cls_scores[b, q]
             if float(s) < cfg.score_thresh:
                 continue
-            mb = masks[b, q] > cfg.mask_thresh
-            if int(mb.sum()) < cfg.min_pixels:
+            mb = _refine_curve_mask(
+                masks[b, q],
+                float(s),
+                centerline_map,
+                boundary_map,
+                crossing_map,
+                cfg,
+            )
+            if int(mb.sum()) < _resolve_min_pixels(masks[b, q], cfg):
                 continue
-            if _should_suppress(mb, kept_masks, crossing_map,
-                                 cfg.nms_iou, cfg.crossing_iou_override,
-                                 cfg.crossing_conf_thresh, cfg.crossing_min_overlap):
+            if _should_suppress(
+                mb,
+                kept_masks,
+                crossing_map,
+                boundary_map,
+                cfg.nms_iou,
+                cfg.crossing_iou_override,
+                cfg.crossing_conf_thresh,
+                cfg.crossing_min_overlap,
+                cfg.boundary_iou_override,
+                cfg.boundary_conf_thresh,
+            ):
                 continue
             kept_masks.append(mb)
             kept_scores.append(s)

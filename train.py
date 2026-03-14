@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import os
 import time
+from dataclasses import replace
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
@@ -108,11 +109,19 @@ def parse_args() -> argparse.Namespace:
                    help="JSON 中未指定宽度时的默认描边宽度（像素）")
 
     # 模型配置
-    p.add_argument("--encoder_dims", type=int, nargs=4, default=[64, 128, 256, 512])
-    p.add_argument("--decoder_dim",  type=int, default=128)
-    p.add_argument("--embed_dim",    type=int, default=16)
-    p.add_argument("--num_queries",  type=int, default=240,
+    p.add_argument("--preset", choices=["chart", "legacy"], default="chart",
+                   help="chart=针对图表曲线任务的默认优化配置，legacy=原始更重配置")
+    p.add_argument("--encoder_dims", type=int, nargs=4, default=None)
+    p.add_argument("--decoder_dim",  type=int, default=None)
+    p.add_argument("--embed_dim",    type=int, default=None)
+    p.add_argument("--num_queries",  type=int, default=None,
                    help="SOTA 模型的 query 数量，建议 ≥ 图片中最大曲线数 × 4")
+    legend_group = p.add_mutually_exclusive_group()
+    legend_group.add_argument("--legend_queries", dest="legend_queries", action="store_true",
+                              help="启用图例引导 Query（当数据提供 legend_patches 时才建议开启）")
+    legend_group.add_argument("--no_legend_queries", dest="legend_queries", action="store_false",
+                              help="[消融] 禁用图例引导 Query (Innovation A+E+LCAB+C)")
+    p.set_defaults(legend_queries=None)
 
     # 其他
     p.add_argument("--resume",   default=None, help="从检查点文件恢复训练")
@@ -131,7 +140,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--ema_decay",        type=float, default=0.999,
                    help="EMA decay 系数（小数据集推荐 0.999，大数据集可用 0.9999）")
     p.add_argument("--loss_ramp_epochs", type=int,   default=10,
-                   help="前 N epoch 内将 cape/pcc/snake_offset 从 0 线性增至全权重（0=不调度）")
+                   help="前 N epoch 内将 boundary/cape/pcc/snake_offset 从 0 线性增至全权重（0=不调度）")
     p.add_argument("--grad_checkpoint",  action="store_true", default=False,
                    help="启用梯度检查点（显著节省显存，训练速度略降）")
 
@@ -142,8 +151,6 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--no_cape",             action="store_true", help="[消融] 禁用 CAPE 连通性损失")
     p.add_argument("--no_pcc",              action="store_true", help="[消融] 禁用 PCC 对比损失")
     p.add_argument("--no_snake_offset",     action="store_true", help="[消融] 禁用 Snake 偏移对齐损失")
-    p.add_argument("--no_legend_queries",   action="store_true",
-                   help="[消融] 禁用图例引导 Query (Innovation A+E+LCAB+C)")
     return p.parse_args()
 
 
@@ -151,14 +158,50 @@ def parse_args() -> argparse.Namespace:
 # 模型 & 损失函数构建
 # ---------------------------------------------------------------------------
 
-def build_model_and_criterion(args) -> Tuple[nn.Module, nn.Module]:
-    backbone_cfg = CurveSegConfig(
-        in_channels=3,
-        encoder_dims=tuple(args.encoder_dims),
-        decoder_dim=args.decoder_dim,
-        embed_dim=args.embed_dim,
-        use_grad_checkpoint=getattr(args, "grad_checkpoint", False),
+def _resolve_backbone_cfg(args) -> CurveSegConfig:
+    preset = getattr(args, "preset", "chart")
+    grad_checkpoint = getattr(args, "grad_checkpoint", False)
+    if preset == "legacy":
+        backbone_cfg = CurveSegConfig.legacy_preset(
+            in_channels=3,
+            use_grad_checkpoint=grad_checkpoint,
+        )
+    else:
+        backbone_cfg = CurveSegConfig.chart_preset(
+            in_channels=3,
+            use_grad_checkpoint=grad_checkpoint,
+        )
+
+    if getattr(args, "encoder_dims", None) is not None:
+        backbone_cfg = replace(backbone_cfg, encoder_dims=tuple(args.encoder_dims))
+    if getattr(args, "decoder_dim", None) is not None:
+        backbone_cfg = replace(backbone_cfg, decoder_dim=int(args.decoder_dim))
+    if getattr(args, "embed_dim", None) is not None:
+        backbone_cfg = replace(backbone_cfg, embed_dim=int(args.embed_dim))
+    return backbone_cfg
+
+
+def _resolve_sota_cfg(args, backbone_cfg: CurveSegConfig) -> CurveSOTAConfig:
+    preset = getattr(args, "preset", "chart")
+    if preset == "legacy":
+        sota_cfg = CurveSOTAConfig.legacy_preset(backbone=backbone_cfg)
+    else:
+        sota_cfg = CurveSOTAConfig.chart_preset(backbone=backbone_cfg)
+
+    if getattr(args, "num_queries", None) is not None:
+        sota_cfg = replace(sota_cfg, num_queries=int(args.num_queries))
+    if getattr(args, "legend_queries", None) is not None:
+        sota_cfg = replace(sota_cfg, use_legend_queries=bool(args.legend_queries))
+    return replace(
+        sota_cfg,
+        use_bato=not getattr(args, "no_bato", False),
+        use_query_align=not getattr(args, "no_query_align", False),
+        use_position_relation=not getattr(args, "no_position_relation", False),
     )
+
+
+def build_model_and_criterion(args) -> Tuple[nn.Module, nn.Module]:
+    backbone_cfg = _resolve_backbone_cfg(args)
 
     if args.model == "base":
         model     = CurveInstanceMamba3Net(backbone_cfg)
@@ -166,30 +209,28 @@ def build_model_and_criterion(args) -> Tuple[nn.Module, nn.Module]:
         base_weights = CurveLossWeights()
         if getattr(args, "no_snake_offset", False):
             base_weights.snake_offset = 0.0
-        criterion = CurveInstanceLoss(embed_dim=args.embed_dim, weights=base_weights)
+        criterion = CurveInstanceLoss(embed_dim=backbone_cfg.embed_dim, weights=base_weights)
     else:
-        sota_cfg = CurveSOTAConfig(
-            backbone=backbone_cfg,
-            num_queries=args.num_queries,
-            use_bato=not getattr(args, "no_bato", False),
-            use_query_align=not getattr(args, "no_query_align", False),
-            use_position_relation=not getattr(args, "no_position_relation", False),
-            use_legend_queries=not getattr(args, "no_legend_queries", False),
-        )
+        sota_cfg = _resolve_sota_cfg(args, backbone_cfg)
         model = CurveSOTAQueryNet(sota_cfg)
         # Apply SOTA-model ablation flags via loss weights
-        sota_weights = SOTALossWeights()
+        if getattr(args, "preset", "chart") == "legacy":
+            sota_weights = SOTALossWeights.legacy_preset()
+        else:
+            sota_weights = SOTALossWeights.chart_preset()
         if getattr(args, "no_cape", False):
             sota_weights.cape = 0.0
         if getattr(args, "no_pcc", False):
             sota_weights.pcc = 0.0
         if getattr(args, "no_snake_offset", False):
             sota_weights.snake_offset = 0.0
-        if getattr(args, "no_legend_queries", False):
+        if not getattr(sota_cfg, "use_legend_queries", False):
             sota_weights.legend_contrastive = 0.0
+        use_uncertainty_weighting = getattr(args, "preset", "chart") == "legacy"
         criterion = CurveSOTACriterion(
             weights=sota_weights,
             legend_contrastive_tau=sota_cfg.legend_contrastive_tau,
+            use_uncertainty_weighting=use_uncertainty_weighting,
         )
 
     return model, criterion
@@ -199,7 +240,7 @@ def build_model_and_criterion(args) -> Tuple[nn.Module, nn.Module]:
 # 损失调度（复杂损失项线性预热）
 # ---------------------------------------------------------------------------
 
-_RAMP_LOSS_KEYS = ("cape", "pcc", "snake_offset")
+_RAMP_LOSS_KEYS = ("boundary", "cape", "pcc", "snake_offset")
 
 
 def _save_original_weights(criterion: nn.Module) -> Dict[str, float]:
@@ -208,7 +249,9 @@ def _save_original_weights(criterion: nn.Module) -> Dict[str, float]:
     if hasattr(criterion, "weights"):
         for key in _RAMP_LOSS_KEYS:
             if hasattr(criterion.weights, key):
-                saved[key] = float(getattr(criterion.weights, key))
+                value = float(getattr(criterion.weights, key))
+                if value > 0.0:
+                    saved[key] = value
     return saved
 
 
@@ -599,10 +642,12 @@ def infer_single(
     # 加载模型
     args_dummy = argparse.Namespace(
         model=model_type,
-        encoder_dims=[64, 128, 256, 512],
-        decoder_dim=128,
-        embed_dim=16,
-        num_queries=240,
+        preset="chart",
+        encoder_dims=None,
+        decoder_dim=None,
+        embed_dim=None,
+        num_queries=None,
+        legend_queries=None,
     )
     model, _ = build_model_and_criterion(args_dummy)
     ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
