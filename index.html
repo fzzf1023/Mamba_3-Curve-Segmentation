@@ -306,13 +306,25 @@
     }
     .flow-node text {
       fill: #24292f;
-      font-size: 14px;
+      font-size: 17px;
       font-weight: 600;
     }
     .flow-node tspan.sub {
-      font-size: 12px;
+      font-size: 15px;
       font-weight: 500;
       fill: #57606a;
+    }
+    .flow-node tspan.math-super,
+    .flow-node tspan.math-sub {
+      font-size: 11px;
+      font-weight: 600;
+      fill: #57606a;
+    }
+    .flow-node tspan.math-super {
+      baseline-shift: super;
+    }
+    .flow-node tspan.math-sub {
+      baseline-shift: sub;
     }
     .flow-node rect {
       stroke-width: 1.25;
@@ -349,12 +361,12 @@
       marker-end: url(#arr-dash);
     }
     .flow-note {
-      font-size: 12px;
+      font-size: 15px;
       fill: #57606a;
       font-weight: 600;
     }
     .flow-lane-title {
-      font-size: 12px;
+      font-size: 15px;
       font-weight: 700;
       fill: #57606a;
       letter-spacing: 0.15px;
@@ -366,7 +378,7 @@
     }
     .flow-step text {
       fill: #ffffff;
-      font-size: 11px;
+      font-size: 14px;
       font-weight: 700;
       text-anchor: middle;
       dominant-baseline: middle;
@@ -473,10 +485,10 @@
                 <rect x="52" y="90" width="180" height="82" rx="13"></rect>
                 <text x="142" y="118" text-anchor="middle">
                   <tspan x="142" dy="0">Input Image</tspan>
-                  <tspan class="sub" x="142" dy="22">I in R^(3xHxW)</tspan>
+                  <tspan class="sub" x="142" dy="22">I ∈ R</tspan><tspan class="math-super">3×H×W</tspan>
                 </text>
               </g>
-              <g class="flow-step"><circle cx="66" cy="92" r="12"></circle><text x="66" y="92">1</text></g>
+              <g class="flow-step"><circle cx="66" cy="92" r="13.5"></circle><text x="66" y="92">1</text></g>
 
               <g class="flow-node flow-main">
                 <rect x="264" y="90" width="220" height="82" rx="13"></rect>
@@ -485,7 +497,7 @@
                   <tspan class="sub" x="374" dy="22">RGB / HSV / Scharr</tspan>
                 </text>
               </g>
-              <g class="flow-step"><circle cx="278" cy="92" r="12"></circle><text x="278" y="92">2</text></g>
+              <g class="flow-step"><circle cx="278" cy="92" r="13.5"></circle><text x="278" y="92">2</text></g>
 
               <g class="flow-node flow-main">
                 <rect x="514" y="90" width="252" height="82" rx="13"></rect>
@@ -494,16 +506,17 @@
                   <tspan class="sub" x="640" dy="22">f1, f2, f3, f4 multi-scale features</tspan>
                 </text>
               </g>
-              <g class="flow-step"><circle cx="528" cy="92" r="12"></circle><text x="528" y="92">3</text></g>
+              <g class="flow-step"><circle cx="528" cy="92" r="13.5"></circle><text x="528" y="92">3</text></g>
 
               <g class="flow-node flow-aux">
-                <rect x="796" y="90" width="252" height="82" rx="13"></rect>
-                <text x="922" y="116" text-anchor="middle">
-                  <tspan x="922" dy="0">FPN + Stem Skip + Grid Bias</tspan>
+                <rect x="796" y="81" width="252" height="100" rx="13"></rect>
+                <text x="922" y="107" text-anchor="middle">
+                  <tspan x="922" dy="0">FPN + Stem Skip</tspan>
+                  <tspan x="922" dy="18">Optional Grid Bias</tspan>
                   <tspan class="sub" x="922" dy="22">Fused feature F</tspan>
                 </text>
               </g>
-              <g class="flow-step"><circle cx="810" cy="92" r="12"></circle><text x="810" y="92">4</text></g>
+              <g class="flow-step"><circle cx="810" cy="92" r="13.5"></circle><text x="810" y="92">4</text></g>
 
               <g class="flow-node flow-aux">
                 <rect x="1080" y="90" width="220" height="82" rx="13"></rect>
@@ -512,17 +525,17 @@
                   <tspan class="sub" x="1190" dy="22">cls / quality / mask</tspan>
                 </text>
               </g>
-              <g class="flow-step"><circle cx="1094" cy="92" r="12"></circle><text x="1094" y="92">5</text></g>
+              <g class="flow-step"><circle cx="1094" cy="92" r="13.5"></circle><text x="1094" y="92">5</text></g>
 
               <g class="flow-node flow-aux">
                 <rect x="1080" y="232" width="220" height="100" rx="13"></rect>
                 <text x="1190" y="258" text-anchor="middle">
                   <tspan x="1190" dy="0">Pixel Topology Branch</tspan>
                   <tspan class="sub" x="1190" dy="20">centerline / crossing</tspan>
-                  <tspan class="sub" x="1190" dy="18">boundary / direction / grid</tspan>
+                  <tspan class="sub" x="1190" dy="18">boundary / direction </tspan>
                 </text>
               </g>
-              <g class="flow-step"><circle cx="1094" cy="234" r="12"></circle><text x="1094" y="234">6</text></g>
+              <g class="flow-step"><circle cx="1094" cy="234" r="13.5"></circle><text x="1094" y="234">6</text></g>
 
               <g class="flow-node flow-train">
                 <rect x="1340" y="86" width="360" height="104" rx="13"></rect>
@@ -532,7 +545,7 @@
                   <tspan class="sub" x="1520" dy="18">chart-core losses + AdamW / EMA / LR</tspan>
                 </text>
               </g>
-              <g class="flow-step"><circle cx="1354" cy="88" r="12"></circle><text x="1354" y="88">7</text></g>
+              <g class="flow-step"><circle cx="1354" cy="88" r="13.5"></circle><text x="1354" y="88">7</text></g>
 
               <g class="flow-node flow-infer">
                 <rect x="1340" y="232" width="360" height="104" rx="13"></rect>
@@ -542,21 +555,22 @@
                   <tspan class="sub" x="1520" dy="18">+ centerline / boundary / crossing refinement</tspan>
                 </text>
               </g>
-              <g class="flow-step"><circle cx="1354" cy="234" r="12"></circle><text x="1354" y="234">8</text></g>
+              <g class="flow-step"><circle cx="1354" cy="234" r="13.5"></circle><text x="1354" y="234">8</text></g>
 
               <g class="flow-node flow-out">
                 <rect x="1340" y="398" width="360" height="88" rx="13"></rect>
                 <text x="1520" y="426" text-anchor="middle">
                   <tspan x="1520" dy="0">Output Instance Set</tspan>
-                  <tspan class="sub" x="1520" dy="22">{(M_k, s_k)}_{k=1}^N</tspan>
+                  <tspan class="sub" x="1520" dy="22">{(M</tspan><tspan class="math-sub">k</tspan><tspan class="sub">, s</tspan><tspan class="math-sub">k</tspan><tspan class="sub">)}</tspan><tspan class="math-sub">k=1</tspan><tspan class="math-super">N</tspan>
                 </text>
               </g>
-              <g class="flow-step"><circle cx="1354" cy="400" r="12"></circle><text x="1354" y="400">9</text></g>
+              <g class="flow-step"><circle cx="1354" cy="400" r="13.5"></circle><text x="1354" y="400">9</text></g>
 
               <g class="flow-node flow-opt">
-                <rect x="796" y="372" width="252" height="100" rx="13"></rect>
-                <text x="922" y="398" text-anchor="middle">
-                  <tspan x="922" dy="0">Optional Legend-Guided Branch</tspan>
+                <rect x="796" y="364" width="252" height="116" rx="13"></rect>
+                <text x="922" y="386" text-anchor="middle">
+                  <tspan x="922" dy="0">Optional</tspan>
+                  <tspan x="922" dy="18">Legend-Guided Branch</tspan>
                   <tspan class="sub" x="922" dy="20">A + LCAB / LSAB / LGB</tspan>
                   <tspan class="sub" x="922" dy="18">C / E when legend_patches are available</tspan>
                 </text>
@@ -566,7 +580,7 @@
               <line class="flow-line" x1="484" y1="131" x2="514" y2="131"></line>
               <line class="flow-line" x1="766" y1="131" x2="796" y2="131"></line>
               <line class="flow-line" x1="1048" y1="131" x2="1080" y2="131"></line>
-              <path class="flow-line" d="M 922 172 L 922 204 L 1190 204 L 1190 232"></path>
+              <path class="flow-line" d="M 922 181 L 922 204 L 1190 204 L 1190 232"></path>
               <path class="flow-link" d="M 1300 131 L 1318 131 L 1318 206"></path>
               <path class="flow-link" d="M 1300 282 L 1318 282 L 1318 206"></path>
               <line class="flow-link" x1="1318" y1="206" x2="1318" y2="147"></line>
@@ -700,7 +714,7 @@
                 <tr><td><code>direction_vectors</code></td><td>\((4,H,W)\)</td><td>Primary tangent (dx,dy) + secondary tangent at crossings</td><td>direction/snake_offset</td></tr>
                 <tr><td><code>crossing_mask</code></td><td>\((H,W)\)</td><td>Overlapping crossing region</td><td>crossing and secondary-direction supervision</td></tr>
                 <tr><td><code>boundary_mask</code></td><td>\((H,W)\)</td><td>Instance boundary region</td><td>boundary loss</td></tr>
-                <tr><td><code>grid_mask</code></td><td>\((H,W)\)</td><td>Grid/background annotation (optional)</td><td>grid loss (falls back to background when absent)</td></tr>
+                <tr><td><code>grid_mask</code></td><td>\((H,W)\)</td><td>Grid/background annotation (optional)</td><td>only used when <code>--grid_suppression</code> is explicitly enabled; the default chart pipeline keeps it off</td></tr>
                 <tr><td><code>layering_target</code></td><td>\((H,W)\)</td><td>Above/below ordering relation (not annotated by default)</td><td>optional layering head</td></tr>
               </tbody>
             </table>
@@ -845,7 +859,7 @@
           </div>
           <div class="eq">\[
           F_{fpn}=\mathrm{Fuse}\!\big[P_1,\mathrm{Up}(P_2),\mathrm{Up}(P_3),\mathrm{Up}(P_4)\big],\quad
-          F= \mathrm{Up}(F_{fpn})+\mathrm{Proj}(stem_{1/2})+\lambda_g B_{grid}.
+          F= \mathrm{Up}(F_{fpn})+\mathrm{Proj}(stem_{1/2})+\lambda_g B_{grid}\;(\text{optional}).
           \]
           </div>
           <div class="def">
@@ -854,7 +868,7 @@
             2) \(\lambda_g\) is a learnable scaling factor that controls the injection strength of the background-suppression component.<br>
             3) The additive fusion \(F+\lambda_g B_{grid}\) is used to suppress background while preserving backbone semantic magnitude, avoiding the over-suppression of weak curves that can happen with multiplicative gating.<br>
             4) The five outputs of the pixel topology head, centerline/crossing/boundary/direction/grid, correspond to connectivity, crossings, instance separation, directional consistency, and background suppression. In the current code path they mainly provide auxiliary geometric supervision during training, while <code>centerline_logits</code>, <code>crossing_logits</code>, and <code>boundary_logits</code> additionally enter post-processing at inference.<br>
-            5) The current implementation exposes <code>stem skip</code> and <code>grid bias</code> as real ablation switches, so they can be disabled independently without changing the rest of the architecture.
+            5) The current implementation exposes <code>stem skip</code> and <code>grid bias</code> as real backbone switches; <code>stem skip</code> remains enabled by default, while <code>grid bias</code> is disabled by default and should only be enabled when grid labels exist.
           </div>
           <div class="grid-2">
             <div class="card">
@@ -864,7 +878,7 @@
                 <li><code>crossing_logits</code></li>
                 <li><code>boundary_logits</code></li>
                 <li><code>direction_vectors</code></li>
-                <li><code>grid_logits</code></li>
+                <li><code>grid_logits</code> (only when enabled)</li>
               </ul>
             </div>
             <div class="card">
@@ -1202,7 +1216,7 @@
                 <tr><td>Thin-curve long-range connectivity</td><td>Progressive Mamba Encoder</td><td>Mamba-3</td><td>2D multi-direction scanning + progressive branch scheduling</td></tr>
                 <tr><td>Insufficient coverage of curved trajectories</td><td>Snake H/V/D45/D135</td><td>SCSegamba</td><td>offset learning + offset alignment loss</td></tr>
                 <tr><td>Crossing-instance confusion</td><td>Query Decoder + Relation Bias + PCC</td><td>Mask2Former / Relation-DETR / CAVIS</td><td>relation-aware decoding in the chart preset, with PCC active by default and removable in ablations</td></tr>
-                <tr><td>Grid-background false positives</td><td>Grid Bias + optional Grid Loss</td><td>background suppression idea</td><td>additive bias is active by default; dense grid loss is disabled in the chart preset</td></tr>
+                <tr><td>Grid-background false positives</td><td>Grid Bias + optional Grid Loss</td><td>background suppression idea</td><td>the branch is implemented but disabled by default; enable it only when grid labels are available</td></tr>
                 <tr><td>Training stability</td><td>BATO + O2M + DN + EMA + ramp</td><td>DI-MaskDINO / DETR family</td><td>multi-strategy coordination for stable convergence</td></tr>
                 <tr><td>Use of legend priors</td><td>A/LCAB/LSAB/LGB/C/E (conditional)</td><td>color-shape bias and contrastive alignment</td><td>chart preset exploits legend priors when <code>legend_patches</code> exist and falls back safely when they do not</td></tr>
               </tbody>
