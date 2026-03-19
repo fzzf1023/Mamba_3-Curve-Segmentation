@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -291,7 +291,7 @@
     }
     .flow-svg {
       width: 100%;
-      min-width: 1180px;
+      min-width: 1320px;
       height: auto;
       display: block;
       border-radius: 6px;
@@ -457,7 +457,7 @@
           </div>
           <div class="flow-wrap">
             <div class="flow-caption">End-to-end pipeline (unified training/inference view)</div>
-            <svg class="flow-svg" viewBox="0 0 1760 560" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Curve instance segmentation model flowchart">
+            <svg class="flow-svg" viewBox="0 0 1900 660" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Curve instance segmentation model flowchart">
               <defs>
                 <marker id="arr" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5" markerHeight="5" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
                   <path d="M 0 0 L 8 4 L 0 8 z" fill="#2a5ea9"></path>
@@ -470,137 +470,134 @@
                 </filter>
               </defs>
 
-              <rect x="10" y="10" width="1740" height="540" rx="18" fill="#f8fbff" stroke="#d5e4ff"></rect>
-              <rect x="34" y="58" width="1266" height="126" rx="16" fill="#f2f8ff" stroke="#d4e3fa"></rect>
-              <rect x="34" y="206" width="1266" height="148" rx="16" fill="#f4faff" stroke="#d8e9fb"></rect>
-              <rect x="1310" y="58" width="430" height="296" rx="16" fill="#fef9ef" stroke="#f0ddbe"></rect>
-              <rect x="1310" y="368" width="430" height="150" rx="16" fill="#f0fbf5" stroke="#cbead8"></rect>
+              <rect x="10" y="10" width="1880" height="640" rx="18" fill="#f8fbff" stroke="#d5e4ff"></rect>
+              <rect x="34" y="60" width="1396" height="138" rx="16" fill="#f2f8ff" stroke="#d4e3fa"></rect>
+              <rect x="34" y="222" width="1396" height="174" rx="16" fill="#f4faff" stroke="#d8e9fb"></rect>
+              <rect x="1444" y="60" width="422" height="336" rx="16" fill="#fef9ef" stroke="#f0ddbe"></rect>
+              <rect x="1444" y="414" width="422" height="170" rx="16" fill="#f0fbf5" stroke="#cbead8"></rect>
 
-              <text class="flow-lane-title" x="52" y="52">Backbone Feature Flow</text>
-              <text class="flow-lane-title" x="52" y="200">Dual-Branch Decoding and Optional Priors</text>
-              <text class="flow-lane-title" x="1328" y="52">Training / Inference Decision Zone</text>
-              <text class="flow-lane-title" x="1328" y="362">Final Output</text>
-
-              <g class="flow-node flow-main">
-                <rect x="52" y="90" width="180" height="82" rx="13"></rect>
-                <text x="142" y="118" text-anchor="middle">
-                  <tspan x="142" dy="0">Input Image</tspan>
-                  <tspan class="sub" x="142" dy="22">I ∈ R</tspan><tspan class="math-super">3×H×W</tspan>
-                </text>
-              </g>
-              <g class="flow-step"><circle cx="66" cy="92" r="13.5"></circle><text x="66" y="92">1</text></g>
+              <text class="flow-lane-title" x="52" y="54">Backbone Feature Flow</text>
+              <text class="flow-lane-title" x="52" y="214">Dual-Branch Decoding and Optional Priors</text>
+              <text class="flow-lane-title" x="1462" y="54">Training / Inference Decision Zone</text>
+              <text class="flow-lane-title" x="1462" y="408">Final Output</text>
 
               <g class="flow-node flow-main">
-                <rect x="264" y="90" width="220" height="82" rx="13"></rect>
-                <text x="374" y="118" text-anchor="middle">
-                  <tspan x="374" dy="0">Input Enhancement</tspan>
-                  <tspan class="sub" x="374" dy="22">RGB / HSV / Scharr</tspan>
+                <rect x="60" y="98" width="204" height="88" rx="13"></rect>
+                <text x="162" y="127" text-anchor="middle">
+                  <tspan x="162" dy="0">Input Image</tspan>
+                  <tspan class="sub" x="162" dy="22">I in R</tspan><tspan class="math-super">3xHxW</tspan>
                 </text>
               </g>
-              <g class="flow-step"><circle cx="278" cy="92" r="13.5"></circle><text x="278" y="92">2</text></g>
+              <g class="flow-step"><circle cx="76" cy="100" r="13.5"></circle><text x="76" y="100">1</text></g>
 
               <g class="flow-node flow-main">
-                <rect x="514" y="90" width="252" height="82" rx="13"></rect>
-                <text x="640" y="116" text-anchor="middle">
-                  <tspan x="640" dy="0">Progressive Mamba Encoder</tspan>
-                  <tspan class="sub" x="640" dy="22">f1, f2, f3, f4 multi-scale features</tspan>
+                <rect x="304" y="98" width="236" height="88" rx="13"></rect>
+                <text x="422" y="127" text-anchor="middle">
+                  <tspan x="422" dy="0">Input Enhancement</tspan>
+                  <tspan class="sub" x="422" dy="22">RGB / HSV / Scharr</tspan>
                 </text>
               </g>
-              <g class="flow-step"><circle cx="528" cy="92" r="13.5"></circle><text x="528" y="92">3</text></g>
+              <g class="flow-step"><circle cx="320" cy="100" r="13.5"></circle><text x="320" y="100">2</text></g>
+
+              <g class="flow-node flow-main">
+                <rect x="580" y="98" width="292" height="88" rx="13"></rect>
+                <text x="726" y="125" text-anchor="middle">
+                  <tspan x="726" dy="0">Progressive Mamba Encoder</tspan>
+                  <tspan class="sub" x="726" dy="22">f1, f2, f3, f4 multi-scale features</tspan>
+                </text>
+              </g>
+              <g class="flow-step"><circle cx="596" cy="100" r="13.5"></circle><text x="596" y="100">3</text></g>
 
               <g class="flow-node flow-aux">
-                <rect x="796" y="81" width="252" height="100" rx="13"></rect>
-                <text x="922" y="107" text-anchor="middle">
-                  <tspan x="922" dy="0">FPN + Stem Skip</tspan>
-                  <tspan x="922" dy="18">Optional Grid Bias</tspan>
-                  <tspan class="sub" x="922" dy="22">Fused feature F</tspan>
+                <rect x="912" y="88" width="272" height="110" rx="13"></rect>
+                <text x="1048" y="115" text-anchor="middle">
+                  <tspan x="1048" dy="0">FPN + Stem Skip</tspan>
+                  <tspan x="1048" dy="18">Optional Grid Bias</tspan>
+                  <tspan class="sub" x="1048" dy="22">Fused feature F</tspan>
                 </text>
               </g>
-              <g class="flow-step"><circle cx="810" cy="92" r="13.5"></circle><text x="810" y="92">4</text></g>
+              <g class="flow-step"><circle cx="928" cy="100" r="13.5"></circle><text x="928" y="100">4</text></g>
 
               <g class="flow-node flow-aux">
-                <rect x="1080" y="90" width="220" height="82" rx="13"></rect>
-                <text x="1190" y="116" text-anchor="middle">
-                  <tspan x="1190" dy="0">Query Decoder</tspan>
-                  <tspan class="sub" x="1190" dy="22">cls / quality / mask</tspan>
+                <rect x="1216" y="98" width="214" height="88" rx="13"></rect>
+                <text x="1323" y="127" text-anchor="middle">
+                  <tspan x="1323" dy="0">Query Decoder</tspan>
+                  <tspan class="sub" x="1323" dy="22">cls / quality / mask</tspan>
                 </text>
               </g>
-              <g class="flow-step"><circle cx="1094" cy="92" r="13.5"></circle><text x="1094" y="92">5</text></g>
+              <g class="flow-step"><circle cx="1232" cy="100" r="13.5"></circle><text x="1232" y="100">5</text></g>
 
               <g class="flow-node flow-aux">
-                <rect x="1080" y="232" width="220" height="100" rx="13"></rect>
-                <text x="1190" y="258" text-anchor="middle">
-                  <tspan x="1190" dy="0">Pixel Topology Branch</tspan>
-                  <tspan class="sub" x="1190" dy="20">centerline / crossing</tspan>
-                  <tspan class="sub" x="1190" dy="18">boundary / direction </tspan>
+                <rect x="1216" y="254" width="214" height="110" rx="13"></rect>
+                <text x="1323" y="283" text-anchor="middle">
+                  <tspan x="1323" dy="0">Pixel Topology Branch</tspan>
+                  <tspan class="sub" x="1323" dy="20">centerline / crossing</tspan>
+                  <tspan class="sub" x="1323" dy="18">boundary / direction</tspan>
                 </text>
               </g>
-              <g class="flow-step"><circle cx="1094" cy="234" r="13.5"></circle><text x="1094" y="234">6</text></g>
+              <g class="flow-step"><circle cx="1232" cy="256" r="13.5"></circle><text x="1232" y="256">6</text></g>
 
               <g class="flow-node flow-train">
-                <rect x="1340" y="86" width="360" height="104" rx="13"></rect>
-                <text x="1520" y="112" text-anchor="middle">
-                  <tspan x="1520" dy="0">Training Path</tspan>
-                  <tspan class="sub" x="1520" dy="20">Hungarian + O2M + DN</tspan>
-                  <tspan class="sub" x="1520" dy="18">chart-core losses + AdamW / EMA / LR</tspan>
+                <rect x="1480" y="98" width="350" height="116" rx="13"></rect>
+                <text x="1655" y="128" text-anchor="middle">
+                  <tspan x="1655" dy="0">Training Path</tspan>
+                  <tspan class="sub" x="1655" dy="20">Hungarian + O2M + DN</tspan>
+                  <tspan class="sub" x="1655" dy="18">chart-core losses + AdamW / EMA / LR</tspan>
                 </text>
               </g>
-              <g class="flow-step"><circle cx="1354" cy="88" r="13.5"></circle><text x="1354" y="88">7</text></g>
+              <g class="flow-step"><circle cx="1496" cy="100" r="13.5"></circle><text x="1496" y="100">7</text></g>
 
               <g class="flow-node flow-infer">
-                <rect x="1340" y="232" width="360" height="104" rx="13"></rect>
-                <text x="1520" y="258" text-anchor="middle">
-                  <tspan x="1520" dy="0">Inference Path</tspan>
-                  <tspan class="sub" x="1520" dy="20">query score / quality / mask</tspan>
-                  <tspan class="sub" x="1520" dy="18">+ centerline / boundary / crossing refinement</tspan>
+                <rect x="1480" y="254" width="350" height="116" rx="13"></rect>
+                <text x="1655" y="284" text-anchor="middle">
+                  <tspan x="1655" dy="0">Inference Path</tspan>
+                  <tspan class="sub" x="1655" dy="20">query score / quality / mask</tspan>
+                  <tspan class="sub" x="1655" dy="18">+ centerline / boundary / crossing refinement</tspan>
                 </text>
               </g>
-              <g class="flow-step"><circle cx="1354" cy="234" r="13.5"></circle><text x="1354" y="234">8</text></g>
+              <g class="flow-step"><circle cx="1496" cy="256" r="13.5"></circle><text x="1496" y="256">8</text></g>
 
               <g class="flow-node flow-out">
-                <rect x="1340" y="398" width="360" height="88" rx="13"></rect>
-                <text x="1520" y="426" text-anchor="middle">
-                  <tspan x="1520" dy="0">Output Instance Set</tspan>
-                  <tspan class="sub" x="1520" dy="22">{(M</tspan><tspan class="math-sub">k</tspan><tspan class="sub">, s</tspan><tspan class="math-sub">k</tspan><tspan class="sub">)}</tspan><tspan class="math-sub">k=1</tspan><tspan class="math-super">N</tspan>
+                <rect x="1480" y="454" width="350" height="96" rx="13"></rect>
+                <text x="1655" y="485" text-anchor="middle">
+                  <tspan x="1655" dy="0">Output Instance Set</tspan>
+                  <tspan class="sub" x="1655" dy="22">{(M</tspan><tspan class="math-sub">k</tspan><tspan class="sub">, s</tspan><tspan class="math-sub">k</tspan><tspan class="sub">)}</tspan><tspan class="math-sub">k=1</tspan><tspan class="math-super">N</tspan>
                 </text>
               </g>
-              <g class="flow-step"><circle cx="1354" cy="400" r="13.5"></circle><text x="1354" y="400">9</text></g>
+              <g class="flow-step"><circle cx="1496" cy="456" r="13.5"></circle><text x="1496" y="456">9</text></g>
 
               <g class="flow-node flow-opt">
-                <rect x="796" y="364" width="252" height="116" rx="13"></rect>
-                <text x="922" y="386" text-anchor="middle">
-                  <tspan x="922" dy="0">Optional</tspan>
-                  <tspan x="922" dy="18">Legend-Guided Branch</tspan>
-                  <tspan class="sub" x="922" dy="20">A + LCAB / LSAB / LGB</tspan>
-                  <tspan class="sub" x="922" dy="18">C / E when legend_patches are available</tspan>
+                <rect x="880" y="432" width="304" height="124" rx="13"></rect>
+                <text x="1032" y="457" text-anchor="middle">
+                  <tspan x="1032" dy="0">Optional</tspan>
+                  <tspan x="1032" dy="18">Legend-Guided Branch</tspan>
+                  <tspan class="sub" x="1032" dy="20">A + LCAB / LSAB / LGB</tspan>
+                  <tspan class="sub" x="1032" dy="18">C / E when legend_patches are available</tspan>
                 </text>
               </g>
 
-              <line class="flow-line" x1="232" y1="131" x2="264" y2="131"></line>
-              <line class="flow-line" x1="484" y1="131" x2="514" y2="131"></line>
-              <line class="flow-line" x1="766" y1="131" x2="796" y2="131"></line>
-              <line class="flow-line" x1="1048" y1="131" x2="1080" y2="131"></line>
-              <path class="flow-line" d="M 922 181 L 922 204 L 1190 204 L 1190 232"></path>
-              <path class="flow-link" d="M 1300 131 L 1318 131 L 1318 206"></path>
-              <path class="flow-link" d="M 1300 282 L 1318 282 L 1318 206"></path>
-              <line class="flow-link" x1="1318" y1="206" x2="1318" y2="147"></line>
-              <line class="flow-link" x1="1318" y1="206" x2="1318" y2="266"></line>
-              <circle cx="1318" cy="206" r="3.8" fill="#2a5ea9" opacity="0.9"></circle>
-              <line class="flow-line" x1="1318" y1="147" x2="1340" y2="147"></line>
-              <line class="flow-line" x1="1318" y1="266" x2="1340" y2="266"></line>
-              <text class="flow-note" x="1190" y="348" text-anchor="middle">
-                <tspan x="1190" dy="0">Centerline, boundary, and crossing</tspan>
-                <tspan x="1190" dy="15">all assist post-processing</tspan>
+              <line class="flow-line" x1="264" y1="142" x2="304" y2="142"></line>
+              <line class="flow-line" x1="540" y1="142" x2="580" y2="142"></line>
+              <line class="flow-line" x1="872" y1="142" x2="912" y2="142"></line>
+              <line class="flow-line" x1="1184" y1="142" x2="1216" y2="142"></line>
+              <path class="flow-line" d="M 1048 198 L 1048 228 L 1323 228 L 1323 254"></path>
+              <line class="flow-line" x1="1430" y1="132" x2="1480" y2="132"></line>
+              <path class="flow-line" d="M 1430 309 L 1462 309 L 1462 186 L 1480 186"></path>
+              <path class="flow-line" d="M 1430 152 L 1446 152 L 1446 286 L 1480 286"></path>
+              <line class="flow-line" x1="1430" y1="309" x2="1480" y2="309"></line>
+              <text class="flow-note" x="1323" y="390" text-anchor="middle">
+                <tspan x="1300" dy="0">Centerline, boundary, and crossing</tspan>
+                <tspan x="1300" dy="15">guide training losses and post-processing</tspan>
               </text>
-              <line class="flow-line" x1="1520" y1="336" x2="1520" y2="398"></line>
+              <line class="flow-line" x1="1655" y1="370" x2="1655" y2="454"></line>
 
-              <path class="flow-dash" d="M 1340 114 C 1120 18, 892 18, 766 90"></path>
-              <text class="flow-note" x="840" y="30">Backpropagation during training updates backbone parameters</text>
+              <path class="flow-dash" d="M 1480 124 C 1240 26, 920 26, 580 98"></path>
+              <text class="flow-note" x="1046" y="34" text-anchor="middle">Backpropagation during training updates backbone parameters</text>
 
-              <path class="flow-dash" d="M 1048 422 L 1064 422 L 1064 172 L 1080 172"></path>
-              <text class="flow-note" x="922" y="494" text-anchor="middle">
-                <tspan x="922" dy="0">Legend priors inject</tspan>
-                <tspan x="922" dy="15">Query semantics when available</tspan>
+              <path class="flow-dash" d="M 1184 494 L 1200 494 L 1200 200 L 1216 200"></path>
+              <text class="flow-note" x="1032" y="586" text-anchor="middle">
+                <tspan x="1032" dy="0">Legend priors inject</tspan>
+                <tspan x="1032" dy="15">query semantics when available</tspan>
               </text>
             </svg>
             <div class="flow-legend">
@@ -1301,3 +1298,4 @@
   <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
 </body>
 </html>
+
