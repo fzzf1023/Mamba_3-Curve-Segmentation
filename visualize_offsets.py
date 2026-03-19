@@ -110,14 +110,26 @@ def main():
     parser.add_argument("--checkpoint", required=True, help="Model checkpoint path")
     parser.add_argument("--image", required=True, help="Input image path")
     parser.add_argument("--model", choices=["base", "sota"], default="sota")
+    parser.add_argument("--preset", choices=["chart", "legacy"], default="chart")
     parser.add_argument("--stage", type=int, nargs="+", default=None,
                         help="Stages to visualize (default: all)")
     parser.add_argument("--img_size", type=int, default=512)
     parser.add_argument("--output_dir", default="offset_vis")
-    parser.add_argument("--encoder_dims", type=int, nargs=4, default=[64, 128, 256, 512])
-    parser.add_argument("--decoder_dim", type=int, default=128)
-    parser.add_argument("--embed_dim", type=int, default=16)
-    parser.add_argument("--num_queries", type=int, default=240)
+    parser.add_argument("--encoder_dims", type=int, nargs=4, default=None)
+    parser.add_argument("--decoder_dim", type=int, default=None)
+    parser.add_argument("--embed_dim", type=int, default=None)
+    parser.add_argument("--num_queries", type=int, default=None)
+    parser.add_argument("--style_head", action="store_true", default=False)
+    parser.add_argument("--num_styles", type=int, default=5)
+    parser.add_argument("--layering_head", action="store_true", default=False)
+    parser.add_argument("--efd_head", action="store_true", default=False)
+    parser.add_argument("--no_bato", action="store_true", default=False)
+    parser.add_argument("--no_query_align", action="store_true", default=False)
+    parser.add_argument("--no_position_relation", action="store_true", default=False)
+    legend_group = parser.add_mutually_exclusive_group()
+    legend_group.add_argument("--legend_queries", dest="legend_queries", action="store_true")
+    legend_group.add_argument("--no_legend_queries", dest="legend_queries", action="store_false")
+    parser.set_defaults(legend_queries=None)
     args = parser.parse_args()
 
     import cv2
@@ -143,7 +155,7 @@ def main():
     ).unsqueeze(0).to(device)
 
     # Determine target stages
-    n_stages = len(args.encoder_dims)
+    n_stages = len(model.encoder.stages)
     target_stages = args.stage if args.stage else list(range(n_stages))
 
     # Register hooks

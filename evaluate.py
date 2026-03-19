@@ -64,8 +64,9 @@ def _ap_at_threshold(
 
     iou = _iou_matrix(pred_masks, gt_masks)
     matched_gt = set()
-    tp = torch.zeros(n_pred)
-    fp = torch.zeros(n_pred)
+    device = pred_masks.device
+    tp = torch.zeros(n_pred, device=device)
+    fp = torch.zeros(n_pred, device=device)
 
     for i in range(n_pred):
         row = iou[i].clone()
@@ -84,8 +85,11 @@ def _ap_at_threshold(
     recall = tp_cum / n_gt
     precision = tp_cum / (tp_cum + fp_cum)
 
-    recall = torch.cat([torch.tensor([0.0]), recall, torch.tensor([1.0])])
-    precision = torch.cat([torch.tensor([0.0]), precision, torch.tensor([0.0])])
+    start = torch.tensor([0.0], device=device, dtype=recall.dtype)
+    end = torch.tensor([1.0], device=device, dtype=recall.dtype)
+    zero = torch.tensor([0.0], device=device, dtype=precision.dtype)
+    recall = torch.cat([start, recall, end])
+    precision = torch.cat([zero, precision, zero])
 
     for i in range(len(precision) - 2, -1, -1):
         precision[i] = max(precision[i], precision[i + 1])

@@ -5,7 +5,7 @@
   <p>
     <a href="#installation"><img src="https://img.shields.io/badge/PyTorch-2.x-EE4C2C?style=for-the-badge&logo=pytorch&logoColor=white" alt="PyTorch"></a>
     <a href="#model-variants"><img src="https://img.shields.io/badge/default-CurveSOTAQueryNet-0969da?style=for-the-badge" alt="Default Model"></a>
-    <a href="#default-configuration"><img src="https://img.shields.io/badge/input-RGB%20%2B%20HSV%20%2B%20Sobel-1f6feb?style=for-the-badge" alt="Input Stack"></a>
+    <a href="#default-configuration"><img src="https://img.shields.io/badge/input-RGB%20%2B%20HSV%20%2B%20Scharr-1f6feb?style=for-the-badge" alt="Input Stack"></a>
     <a href="#default-configuration"><img src="https://img.shields.io/badge/inference-centerline%20recovery%20%2B%20boundary--aware%20NMS-1f883d?style=for-the-badge" alt="Inference"></a>
     <a href="index.html"><img src="https://img.shields.io/badge/docs-index.html-8250df?style=for-the-badge" alt="Docs"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-57606a?style=for-the-badge" alt="License"></a>
@@ -58,8 +58,8 @@ The segmentation side is the primary project in the current codebase. It include
   <tr>
     <td valign="top" width="33%">
       <strong>Supervision</strong><br>
-      <code>12</code> core losses + conditional legend alignment<br><br>
-      The default chart preset keeps the query, centerline, crossing, CAPE, and snake-offset terms active while leaving heavier auxiliaries for legacy mode or ablations.
+      <code>14</code> core losses + conditional legend alignment<br><br>
+      The default chart preset keeps the query, centerline, crossing, boundary, direction, CAPE, PCC, and snake-offset terms active while leaving heavier auxiliaries for legacy mode or ablations.
     </td>
     <td valign="top" width="33%">
       <strong>Inference</strong><br>
@@ -111,7 +111,7 @@ The segmentation side is the primary project in the current codebase. It include
 
 | Area | Current implementation | Why it matters |
 | --- | --- | --- |
-| Input | RGB + HSV + Sobel enhancement is enabled by default in the SOTA model. | Improves thin-curve separation under low contrast and cluttered backgrounds. |
+| Input | RGB + HSV + Scharr enhancement is enabled by default in the SOTA model. | Improves thin-curve separation under low contrast and cluttered backgrounds. |
 | Backbone | The default chart preset uses progressive branch schedules `3 / 5 / 7 / 7` over `H/4 -> H/32`; `legacy` keeps `3 / 5 / 9 / 9`. | Balances detail and long-range structure while cutting redundant deep branches for small-instance charts. |
 | Branch types | The chart preset uses local depthwise convolution, row/column Mamba, reverse row/column scans, and snake scans in `H / V`; the legacy preset also enables `D45 / D135`. | Preserves directional continuity while matching the simpler geometry of charts with few curves. |
 | Decoder | FPN fusion, `H/2` stem skip, additive grid-suppression bias, query decoder, and topology heads. | Preserves details while separating instance decoding from topology supervision. |
@@ -126,7 +126,7 @@ The segmentation side is the primary project in the current codebase. It include
   <tr>
     <td valign="top" width="25%">
       <strong>01. Input Stack</strong><br>
-      RGB + HSV + Sobel enhancement<br><br>
+      RGB + HSV + Scharr enhancement<br><br>
       The default SOTA path augments raw RGB before the first convolutional stem.
     </td>
     <td valign="top" width="25%">
@@ -151,7 +151,7 @@ The segmentation side is the primary project in the current codebase. It include
 
 ```text
 Input image
-  -> RGB / HSV / Sobel enhancement
+  -> RGB / HSV / Scharr enhancement
   -> Progressive Mamba encoder
      - Stage 0: H/4,  3 branches
      - Stage 1: H/8,  5 branches
@@ -173,7 +173,7 @@ The repository keeps two segmentation variants that share the same Mamba-style s
 
 | Variant | Class | Recommended use | What it predicts |
 | --- | --- | --- | --- |
-| Base | `CurveInstanceMamba3Net` | Baseline experiments, lighter ablations, dense pixel prediction | A composed curve mask, instance embeddings, and topology-related dense heads |
+| Base | `CurveInstanceMamba3Net` | Baseline experiments, lighter ablations, dense pixel prediction | A composed curve mask, instance embeddings, and dense centerline/width/direction/crossing/grid heads |
 | SOTA | `CurveSOTAQueryNet` | Default training, instance-level evaluation, best overall performance | Query logits, per-instance masks, mask quality, and auxiliary topology heads |
 
 In short:
@@ -219,6 +219,10 @@ python train.py --model sota --train_dir data/train --resume checkpoints/last.pt
 # Ablation: disable legend-guided queries
 python train.py --model sota --train_dir data/train --val_dir data/val \
     --no_legend_queries
+
+# Ablation: disable stem skip and additive grid suppression
+python train.py --model sota --train_dir data/train --val_dir data/val \
+    --no_stem_skip --no_grid_suppression
 ```
 
 ### Analysis and Utility Scripts
@@ -231,6 +235,7 @@ python profile_model.py --model base --img_size 512 --device cpu
 # Visualize snake offsets from a checkpoint
 python visualize_offsets.py --checkpoint checkpoints/best.pth --image test.png
 python visualize_offsets.py --checkpoint checkpoints/best.pth --image test.png --stage 2
+python visualize_offsets.py --checkpoint checkpoints/best.pth --image test.png --preset legacy
 
 # Inspect dataset tensors and save a debug figure
 python dataset.py data/train
@@ -244,7 +249,7 @@ python dataset.py data/train
 The repository also keeps the original minimal sequence-model reference:
 
 ```bash
-python demo.py
+python examples/demo_mamba_lm.py
 python mamba3.py
 ```
 
@@ -299,6 +304,7 @@ Notes:
 - `grid_mask` falls back to background derived from `instance_ids` when explicit grid labels are absent.
 - `legend_patches` are supported by the training and evaluation code, but the stock `dataset.py` pipeline does not emit them automatically.
 - `layering_target` is created as a placeholder and is only useful if you add real layering annotations.
+- The base model no longer predicts `layering_logits`; layering remains an optional SOTA-only head controlled by `use_layering_head`.
 
 ## Default Configuration
 
@@ -392,19 +398,20 @@ Important detail:
 The codebase still implements the full 16+2-term SOTA criterion, but the default `chart` preset activates a reduced subset:
 
 - Group A: `cls`, `mask`, `dice`, `quality`, `aux`, `dn_mask`, `otm`
-- Group B: `centerline`, `crossing`, `direction`
-- Group C: `cape`
+- Group B: `centerline`, `crossing`, `boundary`, `direction`
+- Group C: `cape`, `pcc`
 - Group D: `snake_offset`
 - Group E: `legend_contrastive` when `legend_patches` are supplied
-- Default zero-weight terms in `chart`: `boundary`, `grid`, `pcc`, `topograph`, `efd`
+- Default zero-weight terms in `chart`: `grid`, `topograph`, `efd`
 
 The heavier `legacy` preset re-enables uncertainty weighting and restores the larger auxiliary set for ablations or replication.
 
 ## Optional Modules and Caveats
 
-- Legend-guided modules `A / LCAB / C / E` are enabled in the chart preset, but they only become effective when the data pipeline supplies `legend_patches`; otherwise the gate falls back and `legend_contrastive` evaluates to zero.
+- Legend-guided modules `A / LCAB / LSAB / LGB / C / E` are enabled in the chart preset; they provide modality-aware color/shape guidance when the data pipeline supplies `legend_patches`, and otherwise the gate falls back and `legend_contrastive` evaluates to zero.
 - `use_style_head` and `use_layering_head` are disabled by default and should only be enabled when matching annotations exist.
 - `crossing_logits`, `centerline_logits`, and `boundary_logits` all participate in inference-time refinement or suppression logic in the current chart preset.
+- `use_stem_skip` and `use_grid_suppression` are now real backbone switches and can be ablated with `--no_stem_skip` and `--no_grid_suppression`.
 
 ## Tests
 

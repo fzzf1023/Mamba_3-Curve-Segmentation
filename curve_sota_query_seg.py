@@ -45,7 +45,7 @@ from mamba3_curve_instance_seg import (
 from legend_encoder import (
     LegendPatchEncoder,
     LegendQueryGate,
-    compute_legend_color_biases,
+    compute_legend_guidance_biases,
     legend_contrastive_loss,
 )
 
@@ -172,16 +172,16 @@ def _rgb_to_hsv(rgb: Tensor, eps: float = 1e-6) -> Tensor:
     return torch.cat([h, s, v], dim=1)
 
 
-def _sobel_features(images: Tensor) -> Tensor:
+def _scharr_features(images: Tensor) -> Tensor:
     r, g, b = images[:, 0:1], images[:, 1:2], images[:, 2:3]
     gray = 0.2989 * r + 0.5870 * g + 0.1140 * b
     kx = torch.tensor(
-        [[-1.0, 0.0, 1.0], [-2.0, 0.0, 2.0], [-1.0, 0.0, 1.0]],
+        [[-3.0, 0.0, 3.0], [-10.0, 0.0, 10.0], [-3.0, 0.0, 3.0]],
         dtype=images.dtype,
         device=images.device,
     ).view(1, 1, 3, 3)
     ky = torch.tensor(
-        [[-1.0, -2.0, -1.0], [0.0, 0.0, 0.0], [1.0, 2.0, 1.0]],
+        [[-3.0, -10.0, -3.0], [0.0, 0.0, 0.0], [3.0, 10.0, 3.0]],
         dtype=images.dtype,
         device=images.device,
     ).view(1, 1, 3, 3)
@@ -361,6 +361,7 @@ class CurveQueryDecoder(nn.Module):
         use_query_align: bool = True,
         use_position_relation: bool = True,
         use_style_head: bool = False,
+        use_efd_head: bool = False,
         use_legend_queries: bool = True,
     ):
         super().__init__()
@@ -408,16 +409,18 @@ class CurveQueryDecoder(nn.Module):
 
         # EFD head: predict Elliptical Fourier Descriptors per query
         # (EFDTR, ICML 2025) — 10 harmonics × 4 coefficients = 40 dims
-        self.efd_head = nn.Sequential(
-            nn.Linear(d_model, d_model // 2),
-            nn.GELU(),
-            nn.Linear(d_model // 2, 40),
+        self.efd_head = (
+            nn.Sequential(
+                nn.Linear(d_model, d_model // 2),
+                nn.GELU(),
+                nn.Linear(d_model // 2, 40),
+            )
+            if use_efd_head else None
         )
 
     def _predict(self, q: Tensor, mask_feat: Tensor, out_hw: Tuple[int, int]) -> Dict[str, Tensor]:
         pred_logits = self.class_head(q)
         pred_quality = self.quality_head(q).squeeze(-1)
-        pred_efd = self.efd_head(q)
         kernel = self.mask_embed(q)
         pred_masks = torch.einsum("bqc,bchw->bqhw", kernel, mask_feat)
         if pred_masks.shape[-2:] != out_hw:
@@ -425,9 +428,10 @@ class CurveQueryDecoder(nn.Module):
         out: Dict[str, Tensor] = {
             "pred_logits": pred_logits,
             "pred_quality": pred_quality,
-            "pred_efd": pred_efd,
             "pred_masks": pred_masks,
         }
+        if self.efd_head is not None:
+            out["pred_efd"] = self.efd_head(q)
         if self.style_head is not None:
             out["pred_style_logits"] = self.style_head(q)
         return out
@@ -543,12 +547,12 @@ class CurveSOTAConfig:
     # Optional heads (disabled by default — enable when annotations exist)
     use_style_head: bool = False         # Per-instance curve style classification
     use_layering_head: bool = False      # Curve layering order prediction (needs layering GT)
-    # Loss ablation flags — set False to ablate individual loss contributions
-    use_cape_loss: bool = True           # CAPE gap + bridge connectivity (MICCAI 2025)
-    use_pcc_loss: bool = True            # Query-level PCC contrastive (CAVIS, ICCV 2025)
+    use_efd_head: bool = False           # EFD contour regularisation head (only useful when efd loss enabled)
     # Legend-guided innovations (A, LCAB, C, E)
     use_legend_queries: bool = True      # Legend-conditioned charts benefit from legend-guided query init
     lcab_temperature: float = 50.0       # LCAB: Lab colour similarity sharpness (larger=sharper)
+    legend_shape_temperature: float = 0.35  # LSAB: structural template NCC temperature
+    legend_shape_template_hw: Tuple[int, int] = (7, 21)  # LSAB template size
     legend_contrastive_tau: float = 0.1  # C: InfoNCE temperature for legend–curve alignment
 
     @classmethod
@@ -583,6 +587,7 @@ class CurveSOTAQueryNet(nn.Module):
     Output (optional, when enabled in CurveSOTAConfig):
       - pred_style_logits: (B,Q,S)   — requires use_style_head=True
       - layering_logits: (B,1,H,W)   — requires use_layering_head=True
+      - pred_efd: (B,Q,40)           — requires use_efd_head=True
     """
 
     def __init__(self, cfg: CurveSOTAConfig = CurveSOTAConfig()):
@@ -593,7 +598,10 @@ class CurveSOTAQueryNet(nn.Module):
         self.encoder = CurveMambaEncoder(self.backbone_cfg)
         self.decoder = FPNDecoder(
             self.backbone_cfg.encoder_dims, self.backbone_cfg.decoder_dim,
-            stem_dim=self.backbone_cfg.encoder_dims[0] // 2,  # stem_half channels
+            stem_dim=(
+                self.backbone_cfg.encoder_dims[0] // 2
+                if self.backbone_cfg.use_stem_skip else None
+            ),
         )
         self.grid_branch = GridSuppressionBranch(
             (
@@ -604,7 +612,7 @@ class CurveSOTAQueryNet(nn.Module):
             decoder_dim=self.backbone_cfg.decoder_dim,
         )
         # Learnable scale for grid additive bias (starts at 0 for stable init, M5)
-        self.grid_scale = nn.Parameter(torch.zeros(1))
+        self.grid_scale = nn.Parameter(torch.zeros(1)) if self.backbone_cfg.use_grid_suppression else None
         self.query_decoder = CurveQueryDecoder(
             d_model=self.backbone_cfg.decoder_dim,
             num_queries=cfg.num_queries,
@@ -620,6 +628,7 @@ class CurveSOTAQueryNet(nn.Module):
             use_query_align=cfg.use_query_align,
             use_position_relation=cfg.use_position_relation,
             use_style_head=cfg.use_style_head,
+            use_efd_head=cfg.use_efd_head,
             use_legend_queries=cfg.use_legend_queries,
         )
         # Innovation A: legend patch encoder (Lab colour + FFT line-style → d_model)
@@ -668,7 +677,7 @@ class CurveSOTAQueryNet(nn.Module):
         if self.cfg.use_hsv_features:
             feats.append(_rgb_to_hsv(images))
         if self.cfg.use_gradient_features:
-            feats.append(_sobel_features(images))
+            feats.append(_scharr_features(images))
         return torch.cat(feats, dim=1)
 
     def _make_dn_queries(
@@ -720,13 +729,18 @@ class CurveSOTAQueryNet(nn.Module):
         out_hw = images.shape[-2:]
         x = self._augment_input(images)
         f1, f2, f3, f4, stem_half, snake_offsets = self.encoder(x)
-        fused = self.decoder((f1, f2, f3, f4), stem_feat=stem_half)
+        fused = self.decoder(
+            (f1, f2, f3, f4),
+            stem_feat=stem_half if self.backbone_cfg.use_stem_skip else None,
+        )
 
-        # Additive grid bias with learnable scale (M5)
         grid_bias, grid_logits_low = self.grid_branch((f1, f2, f3))
-        if grid_bias.shape[-2:] != fused.shape[-2:]:
-            grid_bias = F.interpolate(grid_bias, size=fused.shape[-2:], mode="bilinear", align_corners=False)
-        fused = fused + self.grid_scale * grid_bias
+        if self.grid_scale is not None:
+            if grid_bias.shape[-2:] != fused.shape[-2:]:
+                grid_bias = F.interpolate(
+                    grid_bias, size=fused.shape[-2:], mode="bilinear", align_corners=False
+                )
+            fused = fused + self.grid_scale * grid_bias
 
         memories = [
             rearrange(self.memory_bottleneck[0](self.memory_proj[0](f4)), "b c h w -> b (h w) c"),
@@ -751,6 +765,7 @@ class CurveSOTAQueryNet(nn.Module):
         legend_valid: Optional[Tensor] = None
         legend_color_biases: Optional[List[Tensor]] = None
         legend_feats_out: Optional[Tensor] = None   # exposed for criterion (loss C)
+        legend_modality_out: Optional[Tensor] = None
 
         if legend_patches is not None and self.legend_encoder is not None:
             B = images.shape[0]
@@ -764,7 +779,9 @@ class CurveSOTAQueryNet(nn.Module):
             if max_n > 0:
                 leg_q = images.new_zeros(B, max_n, d)           # (B, N_max, D)
                 leg_v = images.new_zeros(B, max_n, dtype=torch.bool)  # valid mask
+                leg_m = images.new_zeros(B, max_n, 3)           # (B, N_max, 3)
                 lab_means: List[Optional[Tensor]] = []
+                modality_weights: List[Optional[Tensor]] = []
 
                 # Batch device transfer once to minimise CPU↔GPU round-trips
                 legend_patches = [
@@ -775,29 +792,39 @@ class CurveSOTAQueryNet(nn.Module):
                 for b_idx, (patches_i, n_i) in enumerate(zip(legend_patches, n_legs)):
                     if n_i == 0:
                         lab_means.append(None)
+                        modality_weights.append(None)
                         continue
                     p = patches_i.float().clamp(0.0, 1.0)  # already on device
-                    enc = self.legend_encoder(p)                 # (N_i, D)
-                    leg_q[b_idx, :n_i] = enc
+                    enc = self.legend_encoder.encode_modalities(p)
+                    leg_q[b_idx, :n_i] = enc["fused"]
                     leg_v[b_idx, :n_i] = True
+                    leg_m[b_idx, :n_i] = enc["modality_weights"]
                     lab_means.append(
                         LegendPatchEncoder.extract_lab_mean(p)   # (N_i, 3)
                     )
+                    modality_weights.append(enc["modality_weights"])
 
                 legend_init = leg_q
                 legend_valid = leg_v
                 legend_feats_out = leg_q                        # (B, N_max, D) for loss C
+                legend_modality_out = leg_m
 
-                # LCAB: precompute colour biases at 3 memory resolutions
+                # Precompute joint colour/shape legend guidance at 3 memory resolutions.
                 memory_hws = [
                     (f4.shape[-2], f4.shape[-1]),
                     (f3.shape[-2], f3.shape[-1]),
                     (f2.shape[-2], f2.shape[-1]),
                 ]
-                legend_color_biases = compute_legend_color_biases(
-                    lab_means, images.clamp(0.0, 1.0),
-                    memory_hws, self.cfg.num_queries,
-                    self.cfg.lcab_temperature,
+                legend_color_biases = compute_legend_guidance_biases(
+                    legend_lab_means=lab_means,
+                    legend_patches=legend_patches,
+                    legend_modality_weights=modality_weights,
+                    images_rgb=images.clamp(0.0, 1.0),
+                    memory_hws=memory_hws,
+                    num_queries=self.cfg.num_queries,
+                    color_temperature=self.cfg.lcab_temperature,
+                    shape_temperature=self.cfg.legend_shape_temperature,
+                    template_hw=self.cfg.legend_shape_template_hw,
                 )
         # ─────────────────────────────────────────────────────────────────────
 
@@ -812,7 +839,6 @@ class CurveSOTAQueryNet(nn.Module):
             "pred_logits": qout["pred_logits"],
             "pred_masks": qout["pred_masks"],
             "pred_quality": qout["pred_quality"],
-            "pred_efd": qout["pred_efd"],
             "aux_outputs": qout["aux_outputs"],
             "query_feats": qout["query_feats"],   # needed for PCC contrastive loss
             "centerline_logits": self.centerline_head(fused, out_hw),
@@ -822,6 +848,8 @@ class CurveSOTAQueryNet(nn.Module):
             "grid_logits": F.interpolate(grid_logits_low, size=out_hw, mode="bilinear", align_corners=False),
         }
         # Optional outputs: only included when the corresponding head is enabled
+        if "pred_efd" in qout:
+            result["pred_efd"] = qout["pred_efd"]
         if "pred_style_logits" in qout:
             result["pred_style_logits"] = qout["pred_style_logits"]
         if self.layering_head is not None:
@@ -836,6 +864,7 @@ class CurveSOTAQueryNet(nn.Module):
         if legend_feats_out is not None:
             result["legend_feats"] = legend_feats_out   # (B, N_max, D)
             result["legend_valid"] = legend_valid         # (B, N_max) bool
+            result["legend_modality_weights"] = legend_modality_out  # (B, N_max, 3)
         return result
 
 
@@ -1010,9 +1039,9 @@ def _mask_to_efd(mask: Tensor, n_harmonics: int = 10) -> Optional[Tensor]:
 
 @dataclass
 class SOTALossWeights:
-    """Loss weights for 16-term objective, organised into 5 groups.
+    """Loss weights for the SOTA objective, organised into 5 groups.
 
-    Group A — Instance Query Losses (7): cls, mask, dice, quality, aux, dn_mask, otm
+    Group A — Instance Query Losses (9): cls, mask, dice, quality, aux, dn_mask, otm, style, layering
     Group B — Pixel Topology Losses (5): centerline, crossing, boundary, direction, grid
     Group C — Connectivity & Contrastive (2): cape, pcc
     Group D — Snake Offset (1): snake_offset alignment
@@ -1027,15 +1056,17 @@ class SOTALossWeights:
     aux: float = 0.5
     dn_mask: float = 0.75       # denoising query supervision
     otm: float = 0.25           # one-to-many auxiliary matching
+    style: float = 0.5          # optional per-instance style classification
+    layering: float = 0.3       # optional layering head supervision
     # --- Group B: Pixel Topology Losses ---
     centerline: float = 1.0
     crossing: float = 0.75
-    boundary: float = 0.0
+    boundary: float = 0.2
     direction: float = 0.25
     grid: float = 0.0          # grid/background auxiliary loss (supervises grid_logits_conv)
     # --- Group C: Connectivity & Contrastive ---
     cape: float = 0.3           # CAPE gap + bridge connectivity (MICCAI 2025)
-    pcc: float = 0.0            # query-level PCC contrastive (CAVIS, ICCV 2025)
+    pcc: float = 0.05           # query-level PCC contrastive (CAVIS, ICCV 2025)
     # --- Group D: Snake Offset ---
     snake_offset: float = 0.1   # Snake offset alignment with GT tangent direction
     # --- Group E: Legend Contrastive ---
@@ -1053,6 +1084,8 @@ class SOTALossWeights:
         defaults = dict(
             dn_mask=1.0,
             otm=0.5,
+            style=0.5,
+            layering=0.3,
             centerline=0.8,
             crossing=0.6,
             boundary=0.6,
@@ -1082,7 +1115,7 @@ class CurveSOTACriterion(nn.Module):
         self.one_to_many_matcher = OneToManyMatcher(top_k=2)
         self.use_uncertainty_weighting = use_uncertainty_weighting
         self._loss_keys = (
-            "cls", "mask", "dice", "quality", "aux", "dn_mask", "otm",
+            "cls", "mask", "dice", "quality", "aux", "dn_mask", "otm", "style", "layering",
             "centerline", "crossing", "boundary", "direction", "grid",
             "cape", "pcc", "snake_offset", "legend_contrastive",
             "topograph", "efd",
@@ -1187,6 +1220,41 @@ class CurveSOTACriterion(nn.Module):
         iou_target = ((inter + 1e-6) / (union + 1e-6)).clamp(0.0, 1.0)
         return F.binary_cross_entropy_with_logits(q_pred, iou_target)
 
+    def _loss_style(
+        self,
+        pred_style: Optional[Tensor],
+        targets: List[Dict[str, Tensor]],
+        indices: List[Tuple[Tensor, Tensor]],
+    ) -> Tensor:
+        if pred_style is None:
+            return torch.tensor(0.0)
+        logits, style_ids = [], []
+        for b, (src_idx, tgt_idx) in enumerate(indices):
+            if src_idx.numel() == 0 or "styles" not in targets[b]:
+                continue
+            logits.append(pred_style[b, src_idx])
+            style_ids.append(targets[b]["styles"][tgt_idx].to(pred_style.device).long())
+        if not logits:
+            return pred_style.sum() * 0.0
+        return F.cross_entropy(torch.cat(logits, dim=0), torch.cat(style_ids, dim=0))
+
+    def _loss_layering(
+        self,
+        layering_logits: Optional[Tensor],
+        layering_target: Optional[Tensor],
+    ) -> Tensor:
+        if layering_logits is None:
+            ref = layering_target if layering_target is not None else torch.tensor(0.0)
+            return ref.sum() * 0.0
+        if layering_target is None:
+            return layering_logits.sum() * 0.0
+        target = _ensure_channel_first_mask(layering_target.to(layering_logits.device).float())
+        valid = target >= 0.0
+        if not valid.any():
+            return layering_logits.sum() * 0.0
+        target = target.clamp(0.0, 1.0)
+        return F.binary_cross_entropy_with_logits(layering_logits[valid], target[valid])
+
     @staticmethod
     def _boundary_from_instance_ids(instance_ids: Tensor) -> Tensor:
         # boundary pixels are where adjacent labels differ.
@@ -1276,6 +1344,8 @@ class CurveSOTACriterion(nn.Module):
                 "junction_mask",
                 "boundary_mask",
                 "direction_vectors",
+                "grid_mask",
+                "layering_target",
             ):
                 if all(key in t for t in targets):
                     pixel_targets[key] = torch.stack([t[key].to(device) for t in targets], dim=0)
@@ -1337,6 +1407,23 @@ class CurveSOTACriterion(nn.Module):
             )
         else:
             losses["dn_mask"] = outputs["pred_logits"].sum() * 0.0
+
+        if self.weights.style > 0 and "pred_style_logits" in outputs:
+            losses["style"] = self._loss_style(
+                outputs.get("pred_style_logits"),
+                inst_targets,
+                indices,
+            )
+        else:
+            losses["style"] = outputs["pred_logits"].sum() * 0.0
+
+        if self.weights.layering > 0 and "layering_logits" in outputs:
+            losses["layering"] = self._loss_layering(
+                outputs.get("layering_logits"),
+                pixel_targets.get("layering_target"),
+            )
+        else:
+            losses["layering"] = outputs["pred_logits"].sum() * 0.0
 
         # ═══ Group B: Pixel Topology Losses ═══
 
@@ -1495,6 +1582,8 @@ class CurveSOTACriterion(nn.Module):
             "aux": self.weights.aux,
             "dn_mask": self.weights.dn_mask,
             "otm": self.weights.otm,
+            "style": self.weights.style,
+            "layering": self.weights.layering,
             "centerline": self.weights.centerline,
             "crossing": self.weights.crossing,
             "boundary": self.weights.boundary,

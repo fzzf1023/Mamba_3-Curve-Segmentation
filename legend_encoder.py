@@ -1,41 +1,32 @@
-"""Legend-Guided Curve Segmentation Modules.
+"""Legend-guided modules for chart curve segmentation.
 
-Implements four innovations that use chart legend information as prior
-knowledge to guide curve instance segmentation:
+The upgraded legend path now disentangles colour and shape information:
 
   A  — LegendPatchEncoder
-       Analytical Lab colour statistics + FFT line-style descriptor → d_model.
-       Used to initialise one DETR query per legend item so that each query
-       starts the decoding process already "knowing" what colour and line style
-       it is looking for.
-
-  C  — legend_contrastive_loss
-       Bidirectional InfoNCE that aligns the legend patch encoding with the
-       matched decoder query feature vector, encouraging the query space to be
-       geometrically consistent with the legend's visual signature.
+       Encodes legend patches with separate colour and shape branches, then
+       fuses them using an analytical modality gate that can emphasise colour,
+       shape, or both depending on the legend set.
 
   LCAB — compute_legend_color_biases
-       Computes a spatial colour-similarity attention bias for each decoder
-       cross-attention layer.  For query i the bias at spatial position j is:
-           bias[i, j] = −‖Lab(legend_i) − Lab(image_j)‖² / τ
-       Added to the raw attention logits so that every cross-attention layer
-       is guided toward colour-matching image regions—not only the first layer.
+       Computes Lab-space colour attention bias for decoder cross-attention.
+
+  LSAB — compute_legend_shape_biases
+       Uses Scharr-based structural templates and normalized cross-correlation
+       to highlight image regions whose local line pattern matches the legend.
+
+  LGB  — compute_legend_guidance_biases
+       Blends colour and shape bias using the per-legend modality weights.
+
+  C  — legend_contrastive_loss
+       Aligns legend encodings with matched decoder query features.
 
   E  — LegendQueryGate
-       Adaptive blend gate:  query = σ(gate) · legend_init
-                                    + (1 − σ(gate)) · learned_query
-       When legend patches are absent (legend_valid = False) the gate
-       collapses to 0, and the model falls back to its standard learned
-       query embeddings.  This makes the system robust to legend-free charts
-       without requiring a separate inference code path.
-
-All modules are purely optional—CurveSOTAQueryNet accepts
-``legend_patches=None`` and degrades gracefully to standard behaviour.
+       Falls back to learned queries when legend data is absent.
 """
 
 from __future__ import annotations
 
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -94,34 +85,93 @@ def _rgb_to_lab(rgb: Tensor) -> Tensor:
     return torch.stack([L, a, b], dim=-1)
 
 
+def _rgb_to_gray(images: Tensor) -> Tensor:
+    """Return luminance with shape (N,1,H,W) for batched RGB input."""
+    if images.dim() == 4:
+        r, g, b = images[:, 0:1], images[:, 1:2], images[:, 2:3]
+    elif images.dim() == 3:
+        r, g, b = images[..., 0], images[..., 1], images[..., 2]
+    else:
+        raise ValueError(f"Expected RGB tensor with 3 or 4 dims, got {images.shape}")
+    return 0.2989 * r + 0.5870 * g + 0.1140 * b
+
+
+def _scharr_gradients(gray: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
+    """Return Scharr gx, gy, and magnitude for a (N,1,H,W) luminance tensor."""
+    if gray.dim() != 4 or gray.shape[1] != 1:
+        raise ValueError(f"Expected gray tensor of shape (N,1,H,W), got {gray.shape}")
+    kx = torch.tensor(
+        [[-3.0, 0.0, 3.0], [-10.0, 0.0, 10.0], [-3.0, 0.0, 3.0]],
+        dtype=gray.dtype,
+        device=gray.device,
+    ).view(1, 1, 3, 3)
+    ky = torch.tensor(
+        [[-3.0, -10.0, -3.0], [0.0, 0.0, 0.0], [3.0, 10.0, 3.0]],
+        dtype=gray.dtype,
+        device=gray.device,
+    ).view(1, 1, 3, 3)
+    gx = F.conv2d(gray, kx, padding=1)
+    gy = F.conv2d(gray, ky, padding=1)
+    gm = torch.sqrt(gx.pow(2) + gy.pow(2) + 1e-6)
+    return gx, gy, gm
+
+
+def _structural_maps(images_rgb: Tensor) -> Tensor:
+    """Return normalized structural maps [gx, gy, |g|] for RGB images."""
+    gray = _rgb_to_gray(images_rgb).unsqueeze(1) if images_rgb.dim() == 3 else _rgb_to_gray(images_rgb)
+    gx, gy, gm = _scharr_gradients(gray)
+    scale = gm.amax(dim=(-2, -1), keepdim=True).clamp_min(1e-6)
+    return torch.cat([gx / scale, gy / scale, gm / scale], dim=1)
+
+
+def _min_pairwise_distance(feats: Tensor) -> Tensor:
+    """Return per-item distance to the closest other item; zero when N < 2."""
+    n = feats.shape[0]
+    if n < 2:
+        return feats.new_zeros(n)
+    dists = torch.cdist(feats, feats, p=2)
+    eye = torch.eye(n, device=feats.device, dtype=torch.bool)
+    dists = dists.masked_fill(eye, float("inf"))
+    return dists.min(dim=1).values
+
+
+def _odd_kernel_size(target: int, limit: int) -> int:
+    """Clamp to an odd kernel size that fits the current feature map."""
+    if limit <= 1:
+        return 1
+    size = min(target, limit if limit % 2 == 1 else limit - 1)
+    if size <= 0:
+        return 1
+    if size % 2 == 0:
+        size -= 1
+    return max(1, size)
+
+
 # ---------------------------------------------------------------------------
 # Innovation A — Legend Patch Encoder
 # ---------------------------------------------------------------------------
 
 class LegendPatchEncoder(nn.Module):
-    """Analytical-plus-learned legend patch encoder.
-
-    Two analytical descriptors (no convolution, size-invariant):
-      1. Lab colour statistics — mean and std for each of L*, a*, b* → 6 dims.
-         Uses CIE Lab, whose Euclidean distance is perceptually uniform.
-      2. FFT line-style descriptor — the magnitude spectrum of the horizontal
-         projection of the grayscale patch captures line periodicity:
-           • solid line  → flat spectrum (no peaks)
-           • dashed line → clear fundamental-frequency peak
-           • dotted line → peak at higher frequency
-         First 16 bins (normalised by DC) → 16 dims.
-
-    Total analytical features: 22 dims → 2-layer MLP → d_model.
-    Only the MLP is learnable; the feature extraction is deterministic.
-    """
+    """Analytical-plus-learned legend patch encoder with colour/shape gating."""
 
     def __init__(self, d_model: int):
         super().__init__()
         self.d_model = d_model
-        self.mlp = nn.Sequential(
+        self.color_mlp = nn.Sequential(
+            nn.Linear(6, d_model // 2),
+            nn.GELU(),
+            nn.Linear(d_model // 2, d_model),
+            nn.LayerNorm(d_model),
+        )
+        self.shape_mlp = nn.Sequential(
             nn.Linear(22, d_model // 2),
             nn.GELU(),
             nn.Linear(d_model // 2, d_model),
+            nn.LayerNorm(d_model),
+        )
+        self.joint_mlp = nn.Sequential(
+            nn.Linear(2 * d_model, d_model),
+            nn.GELU(),
             nn.LayerNorm(d_model),
         )
 
@@ -143,26 +193,80 @@ class LegendPatchEncoder(nn.Module):
         return torch.cat([mean, std], dim=-1)                # (N, 6)
 
     @staticmethod
-    def _style_feats(patches: Tensor) -> Tensor:
-        """FFT-based line-style descriptor.
+    def _shape_feats(patches: Tensor) -> Tensor:
+        """Edge/periodicity descriptor for line style and marker structure."""
+        gray = _rgb_to_gray(patches)                         # (N, H, W)
+        gx, gy, gm = _scharr_gradients(gray)
+        edge = gm.squeeze(1)
+        edge_n = edge / edge.amax(dim=(-2, -1), keepdim=True).clamp_min(1e-6)
+        theta = torch.atan2(gy.squeeze(1), gx.squeeze(1))
 
-        patches: (N, 3, H, W) ∈ [0, 1]  →  (N, 16)
-        """
-        # Luminance image
-        gray = (0.2989 * patches[:, 0]
-                + 0.5870 * patches[:, 1]
-                + 0.1140 * patches[:, 2])        # (N, H, W)
-        # Horizontal projection: average along height axis
-        proj = gray.mean(dim=1)                              # (N, W)
-        # Real FFT; take magnitude
-        mag = torch.fft.rfft(proj, dim=-1).abs()             # (N, W//2+1)
-        n_bins = min(16, mag.shape[-1])
-        feats = mag[:, :n_bins]
-        if n_bins < 16:
-            feats = F.pad(feats, (0, 16 - n_bins))
-        # Normalise by DC so absolute brightness cancels out
-        feats = feats / feats[:, :1].clamp_min(1e-6)        # (N, 16)
-        return feats
+        edge_mean = edge_n.mean(dim=(1, 2), keepdim=True)
+        edge_std = edge_n.std(dim=(1, 2), keepdim=True).unsqueeze(-1)
+        orient = torch.stack(
+            [
+                (edge_n * torch.cos(theta)).mean(dim=(1, 2)),
+                (edge_n * torch.sin(theta)).mean(dim=(1, 2)),
+                (edge_n * torch.cos(2.0 * theta)).mean(dim=(1, 2)),
+                (edge_n * torch.sin(2.0 * theta)).mean(dim=(1, 2)),
+            ],
+            dim=-1,
+        )
+
+        row_proj = edge_n.mean(dim=1)
+        col_proj = edge_n.mean(dim=2)
+        row_fft = torch.fft.rfft(row_proj, dim=-1).abs()
+        col_fft = torch.fft.rfft(col_proj, dim=-1).abs()
+
+        row_bins = min(8, row_fft.shape[-1])
+        col_bins = min(8, col_fft.shape[-1])
+        row_feats = row_fft[:, :row_bins]
+        col_feats = col_fft[:, :col_bins]
+        if row_bins < 8:
+            row_feats = F.pad(row_feats, (0, 8 - row_bins))
+        if col_bins < 8:
+            col_feats = F.pad(col_feats, (0, 8 - col_bins))
+        row_feats = row_feats / row_feats[:, :1].clamp_min(1e-6)
+        col_feats = col_feats / col_feats[:, :1].clamp_min(1e-6)
+
+        return torch.cat(
+            [
+                edge_mean.flatten(1),
+                edge_std.flatten(1),
+                orient,
+                row_feats,
+                col_feats,
+            ],
+            dim=-1,
+        )
+
+    @staticmethod
+    def _style_feats(patches: Tensor) -> Tensor:
+        """Backward-compatible alias for the upgraded shape descriptor."""
+        return LegendPatchEncoder._shape_feats(patches)
+
+    @staticmethod
+    def _modality_weights(color_feats: Tensor, shape_feats: Tensor) -> Tensor:
+        """Estimate whether each legend is better separated by colour or shape."""
+        color_norm = F.layer_norm(color_feats, (color_feats.shape[-1],))
+        shape_norm = F.layer_norm(shape_feats, (shape_feats.shape[-1],))
+
+        color_sep = _min_pairwise_distance(color_norm)
+        shape_sep = _min_pairwise_distance(shape_norm)
+
+        chroma = torch.sqrt(color_feats[:, 1].pow(2) + color_feats[:, 2].pow(2)) / 100.0
+        color_var = color_feats[:, 3:].mean(dim=-1) / 25.0
+
+        edge_energy = shape_feats[:, 0]
+        orient_energy = shape_feats[:, 2:6].abs().mean(dim=-1)
+        row_peak = shape_feats[:, 6:14].amax(dim=-1)
+        col_peak = shape_feats[:, 14:22].amax(dim=-1)
+        periodicity = 0.5 * (row_peak + col_peak)
+
+        color_score = color_sep + 0.60 * chroma + 0.20 * color_var
+        shape_score = shape_sep + 0.60 * edge_energy + 0.35 * periodicity + 0.15 * orient_energy
+        joint_score = torch.minimum(color_score, shape_score)
+        return torch.softmax(torch.stack([color_score, shape_score, joint_score], dim=-1) * 2.5, dim=-1)
 
     @staticmethod
     def extract_lab_mean(patches: Tensor) -> Tensor:
@@ -173,15 +277,49 @@ class LegendPatchEncoder(nn.Module):
         hwc = patches.permute(0, 2, 3, 1).clamp(0.0, 1.0)
         return _rgb_to_lab(hwc).flatten(1, 2).mean(dim=1)   # (N, 3)
 
+    @staticmethod
+    def extract_shape_templates(
+        patches: Tensor,
+        template_hw: Tuple[int, int] = (7, 21),
+    ) -> Tensor:
+        """Return normalized multi-channel structure templates for NCC matching."""
+        kh = _odd_kernel_size(template_hw[0], patches.shape[-2])
+        kw = _odd_kernel_size(template_hw[1], patches.shape[-1])
+        templates = F.adaptive_avg_pool2d(_structural_maps(patches), output_size=(kh, kw))
+        templates = templates - templates.mean(dim=(-2, -1), keepdim=True)
+        norms = templates.flatten(1).norm(dim=-1, keepdim=True).clamp_min(1e-6)
+        return templates / norms.view(-1, 1, 1, 1)
+
+    def encode_modalities(self, patches: Tensor) -> Dict[str, Tensor]:
+        """Return fused legend encodings plus modality-specific diagnostics."""
+        color_raw = self._color_feats(patches)
+        shape_raw = self._shape_feats(patches)
+        color_emb = self.color_mlp(color_raw)
+        shape_emb = self.shape_mlp(shape_raw)
+        joint_emb = self.joint_mlp(torch.cat([color_emb, shape_emb], dim=-1))
+        weights = self._modality_weights(color_raw, shape_raw)
+        fused = (
+            weights[:, 0:1] * color_emb
+            + weights[:, 1:2] * shape_emb
+            + weights[:, 2:3] * joint_emb
+        )
+        return {
+            "fused": fused,
+            "color_emb": color_emb,
+            "shape_emb": shape_emb,
+            "joint_emb": joint_emb,
+            "modality_weights": weights,
+            "color_feats": color_raw,
+            "shape_feats": shape_raw,
+        }
+
     def forward(self, patches: Tensor) -> Tensor:
         """Encode a batch of legend patches into query initialisation vectors.
 
         patches: (N, 3, H, W) ∈ [0, 1]
         Returns: (N, d_model)
         """
-        color = self._color_feats(patches)                   # (N, 6)
-        style = self._style_feats(patches)                   # (N, 16)
-        return self.mlp(torch.cat([color, style], dim=-1))   # (N, d_model)
+        return self.encode_modalities(patches)["fused"]
 
 
 # ---------------------------------------------------------------------------
@@ -289,6 +427,97 @@ def compute_legend_color_biases(
 
         biases.append(bias)        # (B, Q, HW_k)
     return biases
+
+
+def compute_legend_shape_biases(
+    legend_patches: List[Optional[Tensor]],
+    images_rgb: Tensor,
+    memory_hws: List[Tuple[int, int]],
+    num_queries: int,
+    temperature: float = 0.35,
+    template_hw: Tuple[int, int] = (7, 21),
+) -> List[Tensor]:
+    """Compute shape-template correlation bias for each legend query."""
+    B = images_rgb.shape[0]
+    img_rgb01 = images_rgb.clamp(0.0, 1.0)
+    biases: List[Tensor] = []
+
+    for (h, w) in memory_hws:
+        img_small = F.interpolate(img_rgb01, size=(h, w), mode="bilinear", align_corners=False)
+        img_struct = _structural_maps(img_small)
+        bias = images_rgb.new_zeros(B, num_queries, h * w)
+        for b_idx in range(B):
+            patches = legend_patches[b_idx]
+            if patches is None or patches.shape[0] == 0:
+                continue
+            n_leg = min(patches.shape[0], num_queries)
+            kh = _odd_kernel_size(template_hw[0], h)
+            kw = _odd_kernel_size(template_hw[1], w)
+            templates = LegendPatchEncoder.extract_shape_templates(
+                patches[:n_leg].to(images_rgb.device).float().clamp(0.0, 1.0),
+                template_hw=(kh, kw),
+            )
+            img_feat = img_struct[b_idx:b_idx + 1]
+            energy_kernel = bias.new_ones(1, 1, kh, kw)
+            local_energy = F.conv2d(
+                (img_feat ** 2).sum(dim=1, keepdim=True),
+                energy_kernel,
+                padding=(kh // 2, kw // 2),
+            ).sqrt().clamp_min(1e-6)
+            for i_leg in range(n_leg):
+                response = F.conv2d(
+                    img_feat,
+                    templates[i_leg:i_leg + 1],
+                    padding=(kh // 2, kw // 2),
+                )
+                bias[b_idx, i_leg] = (response / (local_energy * temperature)).flatten(1)
+        biases.append(bias)
+    return biases
+
+
+def compute_legend_guidance_biases(
+    legend_lab_means: List[Optional[Tensor]],
+    legend_patches: List[Optional[Tensor]],
+    legend_modality_weights: List[Optional[Tensor]],
+    images_rgb: Tensor,
+    memory_hws: List[Tuple[int, int]],
+    num_queries: int,
+    color_temperature: float = 50.0,
+    shape_temperature: float = 0.35,
+    template_hw: Tuple[int, int] = (7, 21),
+) -> List[Tensor]:
+    """Blend colour and shape attention bias with per-legend modality weights."""
+    color_biases = compute_legend_color_biases(
+        legend_lab_means,
+        images_rgb,
+        memory_hws,
+        num_queries,
+        temperature=color_temperature,
+    )
+    shape_biases = compute_legend_shape_biases(
+        legend_patches,
+        images_rgb,
+        memory_hws,
+        num_queries,
+        temperature=shape_temperature,
+        template_hw=template_hw,
+    )
+
+    combined: List[Tensor] = []
+    for color_bias, shape_bias in zip(color_biases, shape_biases):
+        level_bias = color_bias.new_zeros(color_bias.shape)
+        for b_idx, weights in enumerate(legend_modality_weights):
+            if weights is None or weights.shape[0] == 0:
+                continue
+            n_leg = min(weights.shape[0], color_bias.shape[1])
+            color_mix = weights[:n_leg, 0] + 0.5 * weights[:n_leg, 2]
+            shape_mix = weights[:n_leg, 1] + 0.5 * weights[:n_leg, 2]
+            level_bias[b_idx, :n_leg] = (
+                color_mix.unsqueeze(-1) * color_bias[b_idx, :n_leg]
+                + shape_mix.unsqueeze(-1) * shape_bias[b_idx, :n_leg]
+            )
+        combined.append(level_bias)
+    return combined
 
 
 # ---------------------------------------------------------------------------

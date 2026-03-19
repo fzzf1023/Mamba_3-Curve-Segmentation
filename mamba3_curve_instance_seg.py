@@ -126,8 +126,7 @@ class CurveSegConfig:
     # Progressive branch design: controls which branches are active per stage
     branches_per_stage: Tuple[Tuple[str, ...], ...] = CHART_CURVE_BRANCHES
 
-    # Ablation flags — set False to ablate individual architectural contributions
-    use_snake_offset_loss: bool = True   # snake offset alignment with GT tangent direction
+    # Architectural switches used by both base and SOTA variants
     use_stem_skip: bool = True           # FPN H/2 stem skip connection
     use_grid_suppression: bool = True    # additive grid bias branch
     use_grad_checkpoint: bool = False    # gradient checkpointing for memory savings
@@ -764,7 +763,6 @@ class CurveInstanceMamba3Net(nn.Module):
       - width_logits:        (B, 1, H, W)  — predicted half-width field
       - direction_vectors:   (B, 4, H, W)  — primary + secondary direction
       - crossing_logits:     (B, 1, H, W)
-      - layering_logits:     (B, 1, H, W)
       - grid_logits:         (B, 1, H, W)
       - snake_offsets:       list of (name, offset) pairs for offset loss
     """
@@ -775,7 +773,7 @@ class CurveInstanceMamba3Net(nn.Module):
         self.encoder = CurveMambaEncoder(cfg)
         self.decoder = FPNDecoder(
             cfg.encoder_dims, cfg.decoder_dim,
-            stem_dim=cfg.encoder_dims[0] // 2,  # stem_half channels
+            stem_dim=(cfg.encoder_dims[0] // 2) if cfg.use_stem_skip else None,
         )
         self.grid_branch = GridSuppressionBranch(
             (cfg.encoder_dims[0], cfg.encoder_dims[1], cfg.encoder_dims[2]),
@@ -783,32 +781,34 @@ class CurveInstanceMamba3Net(nn.Module):
         )
 
         # Learnable scale for grid additive bias (starts at 0 for stable init, M5)
-        self.grid_scale = nn.Parameter(torch.zeros(1))
+        self.grid_scale = nn.Parameter(torch.zeros(1)) if cfg.use_grid_suppression else None
 
         self.embedding_head = PredictionHead(cfg.decoder_dim, cfg.embed_dim)
         self.centerline_head = PredictionHead(cfg.decoder_dim, 1)
         self.width_head = PredictionHead(cfg.decoder_dim, 1)
         self.direction_head = PredictionHead(cfg.decoder_dim, 4)
         self.crossing_head = PredictionHead(cfg.decoder_dim, 1)
-        self.layering_head = PredictionHead(cfg.decoder_dim, 1)
 
     def forward(self, images: Tensor) -> Dict[str, Tensor]:
         out_hw = images.shape[-2:]
 
         f1, f2, f3, f4, stem_half, snake_offsets = self.encoder(images)
-        fused = self.decoder((f1, f2, f3, f4), stem_feat=stem_half)
+        fused = self.decoder(
+            (f1, f2, f3, f4),
+            stem_feat=stem_half if self.cfg.use_stem_skip else None,
+        )
 
-        # Additive grid bias with learnable scale (M5)
         grid_bias, grid_logits_low = self.grid_branch((f1, f2, f3))
-        if grid_bias.shape[-2:] != fused.shape[-2:]:
-            grid_bias = F.interpolate(
-                grid_bias, size=fused.shape[-2:], mode="bilinear", align_corners=False
-            )
-            assert grid_bias.shape == fused.shape, (
-                f"grid_bias shape {grid_bias.shape} != fused shape {fused.shape} "
-                "after interpolation; check FPN decoder output resolution"
-            )
-        fused = fused + self.grid_scale * grid_bias
+        if self.grid_scale is not None:
+            if grid_bias.shape[-2:] != fused.shape[-2:]:
+                grid_bias = F.interpolate(
+                    grid_bias, size=fused.shape[-2:], mode="bilinear", align_corners=False
+                )
+                assert grid_bias.shape == fused.shape, (
+                    f"grid_bias shape {grid_bias.shape} != fused shape {fused.shape} "
+                    "after interpolation; check FPN decoder output resolution"
+                )
+            fused = fused + self.grid_scale * grid_bias
 
         centerline_logits = self.centerline_head(fused, out_hw)
         width_logits = self.width_head(fused, out_hw)
@@ -820,7 +820,6 @@ class CurveInstanceMamba3Net(nn.Module):
             "width_logits": width_logits,
             "direction_vectors": self.direction_head(fused, out_hw),
             "crossing_logits": self.crossing_head(fused, out_hw),
-            "layering_logits": self.layering_head(fused, out_hw),
             "grid_logits": F.interpolate(
                 grid_logits_low, size=out_hw, mode="bilinear", align_corners=False
             ),

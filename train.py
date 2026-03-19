@@ -116,6 +116,20 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--embed_dim",    type=int, default=None)
     p.add_argument("--num_queries",  type=int, default=None,
                    help="SOTA 模型的 query 数量，建议 ≥ 图片中最大曲线数 × 4")
+    p.add_argument("--style_head", action="store_true", default=False,
+                   help="启用每实例 style 分类头（需要 instance_styles 标注）")
+    p.add_argument("--num_styles", type=int, default=5,
+                   help="style 头类别数，仅在 --style_head 时生效")
+    p.add_argument("--style_loss_weight", type=float, default=0.5,
+                   help="style 监督损失权重")
+    p.add_argument("--layering_head", action="store_true", default=False,
+                   help="启用 layering 预测头（需要有效 layering_target 标注）")
+    p.add_argument("--layering_loss_weight", type=float, default=0.3,
+                   help="layering 监督损失权重")
+    p.add_argument("--efd_head", action="store_true", default=False,
+                   help="启用 EFD 轮廓正则头（不需要额外标注，但会增加开销）")
+    p.add_argument("--efd_loss_weight", type=float, default=0.05,
+                   help="EFD 轮廓正则损失权重，仅在 --efd_head 时生效")
     legend_group = p.add_mutually_exclusive_group()
     legend_group.add_argument("--legend_queries", dest="legend_queries", action="store_true",
                               help="启用图例引导 Query（当数据提供 legend_patches 时才建议开启）")
@@ -151,6 +165,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--no_cape",             action="store_true", help="[消融] 禁用 CAPE 连通性损失")
     p.add_argument("--no_pcc",              action="store_true", help="[消融] 禁用 PCC 对比损失")
     p.add_argument("--no_snake_offset",     action="store_true", help="[消融] 禁用 Snake 偏移对齐损失")
+    p.add_argument("--no_stem_skip",        action="store_true", help="[消融] 禁用 FPN H/2 stem skip")
+    p.add_argument("--no_grid_suppression", action="store_true", help="[消融] 禁用 additive grid bias")
     return p.parse_args()
 
 
@@ -178,6 +194,11 @@ def _resolve_backbone_cfg(args) -> CurveSegConfig:
         backbone_cfg = replace(backbone_cfg, decoder_dim=int(args.decoder_dim))
     if getattr(args, "embed_dim", None) is not None:
         backbone_cfg = replace(backbone_cfg, embed_dim=int(args.embed_dim))
+    backbone_cfg = replace(
+        backbone_cfg,
+        use_stem_skip=not getattr(args, "no_stem_skip", False),
+        use_grid_suppression=not getattr(args, "no_grid_suppression", False),
+    )
     return backbone_cfg
 
 
@@ -197,6 +218,10 @@ def _resolve_sota_cfg(args, backbone_cfg: CurveSegConfig) -> CurveSOTAConfig:
         use_bato=not getattr(args, "no_bato", False),
         use_query_align=not getattr(args, "no_query_align", False),
         use_position_relation=not getattr(args, "no_position_relation", False),
+        use_style_head=bool(getattr(args, "style_head", False)),
+        use_layering_head=bool(getattr(args, "layering_head", False)),
+        use_efd_head=bool(getattr(args, "efd_head", False)),
+        num_styles=int(getattr(args, "num_styles", sota_cfg.num_styles)),
     )
 
 
@@ -226,6 +251,18 @@ def build_model_and_criterion(args) -> Tuple[nn.Module, nn.Module]:
             sota_weights.snake_offset = 0.0
         if not getattr(sota_cfg, "use_legend_queries", False):
             sota_weights.legend_contrastive = 0.0
+        if getattr(sota_cfg, "use_style_head", False):
+            sota_weights.style = float(getattr(args, "style_loss_weight", sota_weights.style))
+        else:
+            sota_weights.style = 0.0
+        if getattr(sota_cfg, "use_layering_head", False):
+            sota_weights.layering = float(getattr(args, "layering_loss_weight", sota_weights.layering))
+        else:
+            sota_weights.layering = 0.0
+        if getattr(sota_cfg, "use_efd_head", False):
+            sota_weights.efd = float(getattr(args, "efd_loss_weight", sota_weights.efd))
+        else:
+            sota_weights.efd = 0.0
         use_uncertainty_weighting = getattr(args, "preset", "chart") == "legacy"
         criterion = CurveSOTACriterion(
             weights=sota_weights,
